@@ -81,6 +81,7 @@ public class GalacticfyCore {
         commandManager.register(maintMeta, new MaintenanceCommand(maintenanceService, proxy));
 
 
+
         // Listener registrieren
         proxy.getEventManager().register(this, new ConnectionProtectionListener(logger));
         proxy.getEventManager().register(this, new MaintenanceListener(maintenanceService, logger));

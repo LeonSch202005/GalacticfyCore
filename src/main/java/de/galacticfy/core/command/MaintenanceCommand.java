@@ -2,6 +2,7 @@ package de.galacticfy.core.command;
 
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;
+import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import de.galacticfy.core.service.MaintenanceService;
 import net.kyori.adventure.text.Component;
@@ -24,6 +25,13 @@ public class MaintenanceCommand implements SimpleCommand {
     // Prefix für alle Nachrichten
     private Component prefix() {
         return Component.text("§8[§bGalacticfy§8] §r");
+    }
+
+    private String sourceName(CommandSource source) {
+        if (source instanceof Player player) {
+            return player.getUsername();
+        }
+        return "Konsole";
     }
 
     @Override
@@ -53,9 +61,13 @@ public class MaintenanceCommand implements SimpleCommand {
                 maintenanceService.setMaintenanceEnabled(now);
                 source.sendMessage(prefix().append(Component.text("§aMaintenance ist jetzt: " + (now ? "§cAN" : "§aAUS"))));
                 if (now) {
-                    proxy.sendMessage(prefix().append(Component.text("§eWartungsarbeiten wurden §caktiviert§e.")));
+                    proxy.sendMessage(prefix().append(
+                            Component.text("§eWartungsarbeiten wurden von §b" + sourceName(source) + " §caktiviert§e.")
+                    ));
                 } else {
-                    proxy.sendMessage(prefix().append(Component.text("§aDie Wartungsarbeiten wurden beendet.")));
+                    proxy.sendMessage(prefix().append(
+                            Component.text("§aDie Wartungsarbeiten wurden von §b" + sourceName(source) + " §abeendet.")
+                    ));
                 }
             }
             case "status" -> {
@@ -79,11 +91,15 @@ public class MaintenanceCommand implements SimpleCommand {
     }
 
     private void handleOn(CommandSource source, String[] args) {
+        String by = sourceName(source);
+
         // Nur "/maintenance on"
         if (args.length == 1) {
             maintenanceService.setMaintenanceEnabled(true);
             source.sendMessage(prefix().append(Component.text("§aMaintenance wurde §caktiviert§a (ohne Zeitbegrenzung).")));
-            proxy.sendMessage(prefix().append(Component.text("§eWartungsarbeiten wurden §csofort gestartet§e.")));
+            proxy.sendMessage(prefix().append(
+                    Component.text("§eWartungsarbeiten wurden von §b" + by + " §csofort gestartet§e.")
+            ));
             return;
         }
 
@@ -126,28 +142,30 @@ public class MaintenanceCommand implements SimpleCommand {
             String durationFancy = formatDuration(durationMs);
 
             if (delayMs == null || delayMs <= 0) {
-                // Sofort starten, mit Dauer
                 maintenanceService.enableForDuration(durationMs, () ->
                         proxy.sendMessage(prefix().append(
-                                Component.text("§eWartungsarbeiten wurden §cgestartet§e und laufen §c" + durationFancy + "§e.")
+                                Component.text("§eWartungsarbeiten wurden von §b" + by +
+                                        " §cgestartet§e und laufen §c" + durationFancy + "§e.")
                         ))
                 );
-                source.sendMessage(prefix().append(Component.text("§aMaintenance wurde §caktiviert§a für §e" +
-                        durationFancy + "§a.")));
+                source.sendMessage(prefix().append(Component.text(
+                        "§aMaintenance wurde §caktiviert§a für §e" + durationFancy + "§a."
+                )));
             } else {
                 String delayFancy = formatDuration(delayMs);
 
-                // geplante Maintenance: Broadcast JETZT "beginnt in ..."
+                // Sofort-Broadcast: geplante Wartung
                 proxy.sendMessage(prefix().append(
-                        Component.text("§eWartungsarbeiten beginnen in §c" + delayFancy +
-                                " §eund laufen dann §c" + durationFancy + "§e.")
+                        Component.text("§eWartungsarbeiten wurden von §b" + by +
+                                " §egeplant: Start in §c" + delayFancy +
+                                " §e, Dauer §c" + durationFancy + "§e.")
                 ));
 
-                // und beim Start noch einmal Broadcast
+                // Broadcast beim Start
                 maintenanceService.scheduleMaintenance(delayMs, durationMs, () ->
                         proxy.sendMessage(prefix().append(
-                                Component.text("§eWartungsarbeiten §cstarten jetzt §eund laufen §c" +
-                                        durationFancy + "§e.")
+                                Component.text("§eWartungsarbeiten §cstarten jetzt§e (von §b" + by +
+                                        "§e) und laufen §c" + durationFancy + "§e.")
                         ))
                 );
 
@@ -163,20 +181,33 @@ public class MaintenanceCommand implements SimpleCommand {
     }
 
     private void sendUsage(CommandSource source) {
-        source.sendMessage(prefix().append(Component.text("§eBenutzung:")));
-        source.sendMessage(Component.text("§e/maintenance on"));
-        source.sendMessage(Component.text("§e/maintenance off"));
-        source.sendMessage(Component.text("§e/maintenance toggle"));
-        source.sendMessage(Component.text("§e/maintenance status"));
-        source.sendMessage(Component.text("§e/maintenance on time <Dauer>"));
-        source.sendMessage(Component.text("§e/maintenance on time <Dauer> start <Verzögerung>"));
+        source.sendMessage(Component.text(" "));
+        source.sendMessage(prefix().append(Component.text("§bMaintenance-Hilfe")));
+        source.sendMessage(Component.text("§8────────────────────────────"));
+        source.sendMessage(Component.text("§8» §b/maintenance on §7– Wartungsmodus sofort aktivieren"));
+        source.sendMessage(Component.text("§8» §b/maintenance off §7– Wartungsmodus deaktivieren"));
+        source.sendMessage(Component.text("§8» §b/maintenance toggle §7– an/aus umschalten"));
+        source.sendMessage(Component.text("§8» §b/maintenance status §7– aktuellen Status anzeigen"));
+        source.sendMessage(Component.text(" "));
+        source.sendMessage(Component.text("§8» §b/maintenance on time <Dauer> §7– mit Zeitbegrenzung"));
+        source.sendMessage(Component.text("§8» §b/maintenance on time <Dauer> start <Verzögerung>"));
+        source.sendMessage(Component.text("   §7Einheiten: §ejahr, monat, woche, d, h, m, s"));
+        source.sendMessage(Component.text(" "));
         source.sendMessage(Component.text("§7Beispiele:"));
         source.sendMessage(Component.text("§7/maintenance on time 30m"));
         source.sendMessage(Component.text("§7/maintenance on time 1d 2h 30m start 10m"));
+        source.sendMessage(Component.text("§7/maintenance on time 1jahr start 30m"));
+        source.sendMessage(Component.text("§8────────────────────────────"));
+        source.sendMessage(Component.text(" "));
     }
 
     // --- Zeit-Parsing / Formatierung ----------------------------------------------------
 
+    /**
+     * Unterstützte Beispiele:
+     *  1jahr, 2jahre, 1monat, 2monate, 1woche, 3w,
+     *  1d, 12h, 30m, 10s usw.
+     */
     private Long parseDuration(List<String> tokens) {
         if (tokens == null || tokens.isEmpty()) return null;
 
@@ -186,8 +217,18 @@ public class MaintenanceCommand implements SimpleCommand {
             if (raw == null || raw.isEmpty()) continue;
 
             String s = raw.toLowerCase(Locale.ROOT).trim();
-            char unit = s.charAt(s.length() - 1);
-            String numberPart = s.substring(0, s.length() - 1);
+
+            // Zahl + Text trennen (z.B. "10min", "1jahr")
+            int split = 0;
+            while (split < s.length() && Character.isDigit(s.charAt(split))) {
+                split++;
+            }
+            if (split == 0 || split == s.length()) {
+                return null;
+            }
+
+            String numberPart = s.substring(0, split);
+            String unitPart = s.substring(split);
 
             long value;
             try {
@@ -197,22 +238,36 @@ public class MaintenanceCommand implements SimpleCommand {
             }
 
             long factor;
-            switch (unit) {
-                case 'j': // Tage (alternative Schreibweise)
-                case 'd':
-                    factor = 24L * 60L * 60L * 1000L;
-                    break;
-                case 'h':
-                    factor = 60L * 60L * 1000L;
-                    break;
-                case 'm':
-                    factor = 60L * 1000L;
-                    break;
-                case 's':
-                    factor = 1000L;
-                    break;
-                default:
-                    return null;
+
+            // Jahr(e)
+            if (unitPart.equals("y") || unitPart.equals("jahr") || unitPart.equals("jahre")) {
+                factor = 365L * 24L * 60L * 60L * 1000L;
+            }
+            // Monat(e)
+            else if (unitPart.equals("mo") || unitPart.equals("monat") || unitPart.equals("monate")) {
+                factor = 30L * 24L * 60L * 60L * 1000L;
+            }
+            // Woche(n)
+            else if (unitPart.equals("w") || unitPart.equals("woche") || unitPart.equals("wochen")) {
+                factor = 7L * 24L * 60L * 60L * 1000L;
+            }
+            // Tag(e)
+            else if (unitPart.equals("d") || unitPart.equals("tag") || unitPart.equals("tage")) {
+                factor = 24L * 60L * 60L * 1000L;
+            }
+            // Stunde(n)
+            else if (unitPart.equals("h") || unitPart.equals("std") || unitPart.equals("stunde") || unitPart.equals("stunden")) {
+                factor = 60L * 60L * 1000L;
+            }
+            // Minute(n)
+            else if (unitPart.equals("m") || unitPart.equals("min") || unitPart.equals("minute") || unitPart.equals("minuten")) {
+                factor = 60L * 1000L;
+            }
+            // Sekunde(n)
+            else if (unitPart.equals("s") || unitPart.equals("sek") || unitPart.equals("sekunde") || unitPart.equals("sekunden")) {
+                factor = 1000L;
+            } else {
+                return null;
             }
 
             totalMs += value * factor;
@@ -227,19 +282,31 @@ public class MaintenanceCommand implements SimpleCommand {
         long minutes = seconds / 60;
         long hours = minutes / 60;
         long days = hours / 24;
+        long weeks = days / 7;
+        long months = days / 30;
+        long years = days / 365;
 
         long s = seconds % 60;
         long m = minutes % 60;
         long h = hours % 24;
+        long d = days % 7;
+        long w = weeks % 4;
+        long mo = months % 12;
+        long y = years;
 
         StringBuilder sb = new StringBuilder();
-        if (days > 0) sb.append(days).append("d ");
+        if (y > 0) sb.append(y).append("y ");
+        if (mo > 0) sb.append(mo).append("mo ");
+        if (w > 0) sb.append(w).append("w ");
+        if (d > 0) sb.append(d).append("d ");
         if (h > 0) sb.append(h).append("h ");
         if (m > 0) sb.append(m).append("m ");
         if (s > 0 || sb.isEmpty()) sb.append(s).append("s");
 
         return sb.toString().trim();
     }
+
+    // --- Tab-Complete -------------------------------------------------------------------
 
     @Override
     public boolean hasPermission(Invocation invocation) {
@@ -289,10 +356,14 @@ public class MaintenanceCommand implements SimpleCommand {
             return List.of();
         }
 
+        // Beispiele inkl. Jahr / Monat / Woche
         List<String> durationExamples = List.of(
                 "30s", "1m", "5m", "10m", "30m",
                 "1h", "2h", "6h", "12h",
-                "1d", "2d"
+                "1d", "3d",
+                "1woche",
+                "1monat",
+                "1jahr"
         );
 
         String last = args[args.length - 1].toLowerCase(Locale.ROOT);
@@ -319,6 +390,7 @@ public class MaintenanceCommand implements SimpleCommand {
         }
 
         if (startIndex == args.length - 1) {
+            // Cursor direkt hinter "start"
             return durationExamples;
         }
 
