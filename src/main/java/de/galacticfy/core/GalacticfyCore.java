@@ -78,7 +78,8 @@ public class GalacticfyCore {
         CommandMeta maintMeta = commandManager.metaBuilder("maintenance")
                 .aliases("maint")
                 .build();
-        commandManager.register(maintMeta, new MaintenanceCommand(maintenanceService));
+        commandManager.register(maintMeta, new MaintenanceCommand(maintenanceService, proxy));
+
 
         // Listener registrieren
         proxy.getEventManager().register(this, new ConnectionProtectionListener(logger));

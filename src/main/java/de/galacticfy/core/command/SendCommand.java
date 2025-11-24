@@ -7,6 +7,7 @@ import de.galacticfy.core.service.ServerTeleportService;
 import net.kyori.adventure.text.Component;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 public class SendCommand implements SimpleCommand {
@@ -42,20 +43,52 @@ public class SendCommand implements SimpleCommand {
         }
 
         Player target = optional.get();
-        teleportService.sendToServer(target, backendName, backendName, true); // Staff: ohne Cooldown
+        teleportService.sendToServer(target, backendName, backendName, true);
         invocation.source().sendMessage(Component.text("§aSende §e" + target.getUsername() + " §aan Server §e" + backendName + "§a."));
     }
 
     @Override
+    public boolean hasPermission(Invocation invocation) {
+        return invocation.source().hasPermission("galacticfy.command.send");
+    }
+
+    @Override
     public List<String> suggest(Invocation invocation) {
+        if (!invocation.source().hasPermission("galacticfy.command.send")) {
+            return List.of();
+        }
+
         String[] args = invocation.arguments();
 
-        // Tab-Complete: Servernamen beim 2. Argument
+        // Noch keine Argumente getippt: alle Spieler vorschlagen
+        if (args.length == 0) {
+            return proxy.getAllPlayers().stream()
+                    .map(Player::getUsername)
+                    .toList();
+        }
+
+        // 1. Argument: Spieler
+        if (args.length == 1) {
+            String prefix = args[0].toLowerCase(Locale.ROOT);
+            return proxy.getAllPlayers().stream()
+                    .map(Player::getUsername)
+                    .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(prefix))
+                    .toList();
+        }
+
+        // 2. Argument: Server
         if (args.length == 2) {
-            String prefix = args[1].toLowerCase();
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            if (prefix.isEmpty()) {
+                // nichts getippt -> alle Server
+                return proxy.getAllServers().stream()
+                        .map(s -> s.getServerInfo().getName())
+                        .toList();
+            }
+
             return proxy.getAllServers().stream()
                     .map(s -> s.getServerInfo().getName())
-                    .filter(name -> name.toLowerCase().startsWith(prefix))
+                    .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(prefix))
                     .toList();
         }
 
