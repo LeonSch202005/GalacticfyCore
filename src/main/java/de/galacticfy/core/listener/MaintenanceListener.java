@@ -1,11 +1,9 @@
 package de.galacticfy.core.listener;
 
+import com.velocitypowered.api.event.ResultedEvent;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.LoginEvent;
-import com.velocitypowered.api.event.proxy.ProxyPingEvent;
-import com.velocitypowered.api.event.ResultedEvent;
 import com.velocitypowered.api.proxy.Player;
-import com.velocitypowered.api.proxy.server.ServerPing;
 import de.galacticfy.core.service.MaintenanceService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -15,7 +13,7 @@ public class MaintenanceListener {
 
     private final MaintenanceService maintenanceService;
     private final Logger logger;
-    private final MiniMessage miniMessage = MiniMessage.miniMessage();
+    private final MiniMessage mm = MiniMessage.miniMessage();
 
     public MaintenanceListener(MaintenanceService maintenanceService, Logger logger) {
         this.maintenanceService = maintenanceService;
@@ -24,61 +22,30 @@ public class MaintenanceListener {
 
     @Subscribe
     public void onLogin(LoginEvent event) {
-        if (!maintenanceService.isMaintenanceEnabled()) return;
-
-        Player player = event.getPlayer();
-
-        // Bypass-Permission
-        if (player.hasPermission("galacticfy.maintenance.bypass")) {
+        if (!maintenanceService.isMaintenanceEnabled()) {
             return;
         }
 
-        event.setResult(ResultedEvent.ComponentResult.denied(
-                Component.text("§cDas Netzwerk befindet sich zurzeit in Wartungsarbeiten.")
-        ));
-        logger.info("Spieler {} wurde wegen Maintenance geblockt.", player.getUsername());
-    }
+        Player player = event.getPlayer();
 
-    @Subscribe
-    public void onProxyPing(ProxyPingEvent event) {
-        ServerPing original = event.getPing();
-        ServerPing.Builder builder = original.asBuilder();
-
-        if (maintenanceService.isMaintenanceEnabled()) {
-            // Wartungs-MOTD
-            Long remaining = maintenanceService.getRemainingMillis();
-
-            String extra = "";
-            if (remaining != null && remaining > 0) {
-                long seconds = remaining / 1000;
-                long minutes = seconds / 60;
-                long hours = minutes / 60;
-                long days = hours / 24;
-
-                long s = seconds % 60;
-                long m = minutes % 60;
-                long h = hours % 24;
-
-                extra = "<gray>Restzeit: </gray><yellow>"
-                        + days + "d " + h + "h " + m + "m " + s + "s</yellow>";
-            }
-
-            builder.description(
-                    miniMessage.deserialize(
-                            "<red><bold>WARTUNGSARBEITEN</bold></red><newline>" +
-                                    "<gray>Schau später wieder vorbei!</gray>" +
-                                    (extra.isEmpty() ? "" : "<newline>" + extra)
-                    )
-            );
-        } else {
-            // Normale, hübsche MOTD
-            builder.description(
-                    miniMessage.deserialize(
-                            "<gradient:#00AEEF:#007FFF><bold>Galacticfy</bold></gradient> <gray>- Willkommen</gray>"
-                    )
-            );
+        // Bypass?
+        if (player.hasPermission("galacticfy.maintenance.bypass")
+                || maintenanceService.isPlayerWhitelisted(player.getUsername())) {
+            return;
         }
 
-        event.setPing(builder.build());
+        Component kickMessage = mm.deserialize(
+                "\n" +
+                        "<gradient:#00E5FF:#7A00FF><bold>Galacticfy</bold></gradient> <gray>|</gray> <red><bold>Wartungsmodus aktiv</bold></red>\n" +
+                        "<gray>Das Netzwerk befindet sich derzeit in Wartungsarbeiten.</gray>\n" +
+                        "<gray>Bitte versuche es später erneut.</gray>\n" +
+                        "\n" +
+                        "<gold><bold>Weitere Infos:</bold></gold>\n" +
+                        "<yellow>• Website:</yellow> <aqua>https://galacticfy.de</aqua>\n" +
+                        "<yellow>• Discord:</yellow> <aqua>discord.gg/galacticfy</aqua>"
+        );
+
+        event.setResult(ResultedEvent.ComponentResult.denied(kickMessage));
+        logger.info("Spieler {} wurde wegen Maintenance gekickt.", player.getUsername());
     }
 }

@@ -80,7 +80,6 @@ public class SendCommand implements SimpleCommand {
         if (args.length == 2) {
             String prefix = args[1].toLowerCase(Locale.ROOT);
             if (prefix.isEmpty()) {
-                // nichts getippt -> alle Server
                 return proxy.getAllServers().stream()
                         .map(s -> s.getServerInfo().getName())
                         .toList();

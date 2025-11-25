@@ -30,9 +30,9 @@ public class ServerTeleportService {
     /**
      * Teleportiert einen Spieler auf einen Backend-Server.
      *
-     * @param player       Spieler
-     * @param backendName  exakter Name des Servers in Velocity (z.B. "Lobby-1")
-     * @param displayName  hübscher Anzeigename ("der Lobby", "Citybuild")
+     * @param player         Spieler
+     * @param backendName    exakter Name des Servers in Velocity (z.B. "Lobby-1")
+     * @param displayName    hübscher Anzeigename ("der Lobby", "Citybuild")
      * @param ignoreCooldown true, wenn kein Cooldown gelten soll (z.B. bei /send)
      */
     public void sendToServer(Player player, String backendName, String displayName, boolean ignoreCooldown) {

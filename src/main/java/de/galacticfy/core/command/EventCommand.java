@@ -2,15 +2,21 @@ package de.galacticfy.core.command;
 
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
+import de.galacticfy.core.service.MaintenanceService;
 import de.galacticfy.core.service.ServerTeleportService;
 import net.kyori.adventure.text.Component;
 
 public class EventCommand implements SimpleCommand {
 
     private final ServerTeleportService teleportService;
+    private final MaintenanceService maintenanceService;
 
-    public EventCommand(ServerTeleportService teleportService) {
+    private static final String BACKEND_NAME = "event-1";
+
+    public EventCommand(ServerTeleportService teleportService,
+                        MaintenanceService maintenanceService) {
         this.teleportService = teleportService;
+        this.maintenanceService = maintenanceService;
     }
 
     @Override
@@ -25,8 +31,14 @@ public class EventCommand implements SimpleCommand {
             return;
         }
 
-        // Backend-Namen ggf. anpassen ("event-1" o.ä.)
-        teleportService.sendToServer(player, "event-1", "dem Event", false);
+        if (maintenanceService.isServerInMaintenance(BACKEND_NAME)) {
+            player.sendMessage(Component.text(
+                    "§cDas Event befindet sich derzeit im Wartungsmodus.§7 Du kannst es momentan nicht betreten."
+            ));
+            return;
+        }
+
+        teleportService.sendToServer(player, BACKEND_NAME, "dem Event", false);
     }
 
     @Override
