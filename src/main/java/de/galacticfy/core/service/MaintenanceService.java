@@ -1,7 +1,10 @@
 package de.galacticfy.core.service;
 
+import de.galacticfy.core.database.DatabaseManager;
 import org.slf4j.Logger;
 
+import java.sql.*;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -13,26 +16,162 @@ import java.util.concurrent.TimeUnit;
 /**
  * Verwaltet den globalen Maintenance-Status, Timer,
  * Whitelist und pro-Server-Wartung.
+ *
+ * Jetzt mit Datenbank-Persistenz:
+ *  - gf_maintenance_config
+ *  - gf_maintenance_whitelist_players
+ *  - gf_maintenance_whitelist_groups
  */
 public class MaintenanceService {
 
     private final Logger logger;
+    private final DatabaseManager db;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     // Globaler Wartungsmodus
     private volatile boolean maintenanceEnabled = false;
-    private volatile Long maintenanceEndMillis = null;
+    private volatile Long maintenanceEndMillis = null; // kann null sein
 
     // Whitelist für Spieler (Namen in lowercase)
     private final Set<String> whitelistedPlayers = ConcurrentHashMap.newKeySet();
-    // Whitelist für Gruppen (Namen in lowercase)
+    // Whitelist für Gruppen/Rollen (Namen in lowercase)
     private final Set<String> whitelistedGroups = ConcurrentHashMap.newKeySet();
 
-    // Pro-Server-Maintenance: Backend-Name in lowercase
+    // Pro-Server-Maintenance: Backend-Name in lowercase (nur in Memory)
     private final Set<String> serverMaintenance = ConcurrentHashMap.newKeySet();
 
-    public MaintenanceService(Logger logger) {
+    public MaintenanceService(Logger logger, DatabaseManager db) {
         this.logger = logger;
+        this.db = db;
+
+        // Beim Start Zustand & Whitelists aus DB laden
+        loadFromDatabase();
+    }
+
+    // =====================================================================
+    // LADEN AUS DER DATENBANK
+    // =====================================================================
+
+    private void loadFromDatabase() {
+        loadMaintenanceConfig();
+        loadWhitelists();
+    }
+
+    private void loadMaintenanceConfig() {
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "SELECT enabled, end_at FROM gf_maintenance_config WHERE id = 1"
+             )) {
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    this.maintenanceEnabled = rs.getBoolean("enabled");
+                    Timestamp ts = rs.getTimestamp("end_at");
+                    if (ts != null) {
+                        this.maintenanceEndMillis = ts.toInstant().toEpochMilli();
+                    } else {
+                        this.maintenanceEndMillis = null;
+                    }
+                } else {
+                    // Default-Eintrag anlegen
+                    try (PreparedStatement insert = con.prepareStatement(
+                            "INSERT INTO gf_maintenance_config (id, enabled, end_at) VALUES (1, 0, NULL)"
+                    )) {
+                        insert.executeUpdate();
+                    }
+                    this.maintenanceEnabled = false;
+                    this.maintenanceEndMillis = null;
+                }
+            }
+
+            logger.info("MaintenanceService: Config aus DB geladen (enabled={}, endAt={}).",
+                    maintenanceEnabled, maintenanceEndMillis != null ? Instant.ofEpochMilli(maintenanceEndMillis) : "null");
+
+        } catch (SQLException e) {
+            logger.error("Fehler beim Laden der Maintenance-Config aus der Datenbank", e);
+        }
+
+        // Falls ein Endzeitpunkt in der Zukunft gesetzt ist, könnte man hier
+        // optional einen Auto-Ende-Task planen. Zur Sicherheit lassen wir
+        // Maintenance einfach aktiv, bis ein Admin sie beendet.
+    }
+
+    private void loadWhitelists() {
+        whitelistedPlayers.clear();
+        whitelistedGroups.clear();
+
+        try (Connection con = db.getConnection();
+             PreparedStatement psPlayers = con.prepareStatement(
+                     "SELECT name FROM gf_maintenance_whitelist_players"
+             );
+             PreparedStatement psGroups = con.prepareStatement(
+                     "SELECT group_name FROM gf_maintenance_whitelist_groups"
+             )) {
+
+            try (ResultSet rs = psPlayers.executeQuery()) {
+                while (rs.next()) {
+                    String name = rs.getString("name");
+                    if (name != null && !name.isBlank()) {
+                        whitelistedPlayers.add(name.toLowerCase(Locale.ROOT));
+                    }
+                }
+            }
+
+            try (ResultSet rs = psGroups.executeQuery()) {
+                while (rs.next()) {
+                    String group = rs.getString("group_name");
+                    if (group != null && !group.isBlank()) {
+                        whitelistedGroups.add(group.toLowerCase(Locale.ROOT));
+                    }
+                }
+            }
+
+            logger.info("MaintenanceService: Whitelists aus DB geladen (players={}, groups={}).",
+                    whitelistedPlayers.size(), whitelistedGroups.size());
+
+        } catch (SQLException e) {
+            logger.error("Fehler beim Laden der Maintenance-Whitelists aus der Datenbank", e);
+        }
+    }
+
+    private void saveConfigToDatabase() {
+        try (Connection con = db.getConnection()) {
+            Timestamp ts = (maintenanceEndMillis != null)
+                    ? new Timestamp(maintenanceEndMillis)
+                    : null;
+
+            // UPDATE versuchen
+            int updated;
+            try (PreparedStatement ps = con.prepareStatement(
+                    "UPDATE gf_maintenance_config SET enabled = ?, end_at = ? WHERE id = 1"
+            )) {
+                ps.setBoolean(1, maintenanceEnabled);
+                if (ts != null) {
+                    ps.setTimestamp(2, ts);
+                } else {
+                    ps.setNull(2, Types.TIMESTAMP);
+                }
+                updated = ps.executeUpdate();
+            }
+
+            // Falls noch kein Eintrag existiert → INSERT
+            if (updated == 0) {
+                try (PreparedStatement ps = con.prepareStatement(
+                        "INSERT INTO gf_maintenance_config (id, enabled, end_at) VALUES (1, ?, ?)"
+                )) {
+                    ps.setBoolean(1, maintenanceEnabled);
+                    if (ts != null) {
+                        ps.setTimestamp(2, ts);
+                    } else {
+                        ps.setNull(2, Types.TIMESTAMP);
+                    }
+                    ps.executeUpdate();
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.error("Fehler beim Speichern der Maintenance-Config in der Datenbank", e);
+        }
     }
 
     // =====================================================================
@@ -52,6 +191,8 @@ public class MaintenanceService {
             this.maintenanceEndMillis = null;
         }
         logger.info("Maintenance-Mode wurde {}.", enabled ? "aktiviert" : "deaktiviert");
+
+        saveConfigToDatabase();
     }
 
     // =====================================================================
@@ -77,6 +218,7 @@ public class MaintenanceService {
         if (durationMs > 0) {
             long endAt = System.currentTimeMillis() + durationMs;
             this.maintenanceEndMillis = endAt;
+            saveConfigToDatabase();
 
             scheduler.schedule(() -> {
                 logger.info("Maintenance-Zeitraum abgelaufen, deaktiviere Maintenance...");
@@ -94,6 +236,7 @@ public class MaintenanceService {
             }, durationMs, TimeUnit.MILLISECONDS);
         } else {
             this.maintenanceEndMillis = null;
+            saveConfigToDatabase();
         }
     }
 
@@ -111,7 +254,8 @@ public class MaintenanceService {
      */
     public void scheduleMaintenance(long delayMs, long durationMs, Runnable onStart, Runnable onEnd) {
         logger.info("Maintenance wird in {} ms gestartet (Dauer: {} ms).", delayMs, durationMs);
-        scheduler.schedule(() -> enableForDuration(durationMs, onStart, onEnd), delayMs, TimeUnit.MILLISECONDS);
+        scheduler.schedule(() -> enableForDuration(durationMs, onStart, onEnd),
+                delayMs, TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -160,17 +304,50 @@ public class MaintenanceService {
     }
 
     // =====================================================================
-    // WHITELIST SPIELER / GRUPPEN
+    // WHITELIST SPIELER / GRUPPEN (mit DB)
     // =====================================================================
 
     public boolean addWhitelistedPlayer(String name) {
         if (name == null || name.isBlank()) return false;
-        return whitelistedPlayers.add(name.toLowerCase(Locale.ROOT));
+        String key = name.toLowerCase(Locale.ROOT);
+
+        if (!whitelistedPlayers.add(key)) {
+            return false; // schon drin
+        }
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "INSERT INTO gf_maintenance_whitelist_players (name) VALUES (?) " +
+                             "ON DUPLICATE KEY UPDATE name = name"
+             )) {
+            ps.setString(1, key);
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            logger.error("Fehler beim Hinzufügen des Whitelist-Spielers {}", key, e);
+            return false;
+        }
     }
 
     public boolean removeWhitelistedPlayer(String name) {
         if (name == null || name.isBlank()) return false;
-        return whitelistedPlayers.remove(name.toLowerCase(Locale.ROOT));
+        String key = name.toLowerCase(Locale.ROOT);
+
+        if (!whitelistedPlayers.remove(key)) {
+            return false;
+        }
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "DELETE FROM gf_maintenance_whitelist_players WHERE name = ?"
+             )) {
+            ps.setString(1, key);
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            logger.error("Fehler beim Entfernen des Whitelist-Spielers {}", key, e);
+            return false;
+        }
     }
 
     public boolean isPlayerWhitelisted(String name) {
@@ -186,12 +363,50 @@ public class MaintenanceService {
 
     public boolean addWhitelistedGroup(String group) {
         if (group == null || group.isBlank()) return false;
-        return whitelistedGroups.add(group.toLowerCase(Locale.ROOT));
+        String key = group.toLowerCase(Locale.ROOT);
+
+        if (!whitelistedGroups.add(key)) {
+            return false;
+        }
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "INSERT INTO gf_maintenance_whitelist_groups (group_name) VALUES (?) " +
+                             "ON DUPLICATE KEY UPDATE group_name = group_name"
+             )) {
+            ps.setString(1, key);
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            logger.error("Fehler beim Hinzufügen der Whitelist-Gruppe {}", key, e);
+            return false;
+        }
     }
 
     public boolean removeWhitelistedGroup(String group) {
         if (group == null || group.isBlank()) return false;
-        return whitelistedGroups.remove(group.toLowerCase(Locale.ROOT));
+        String key = group.toLowerCase(Locale.ROOT);
+
+        if (!whitelistedGroups.remove(key)) {
+            return false;
+        }
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "DELETE FROM gf_maintenance_whitelist_groups WHERE group_name = ?"
+             )) {
+            ps.setString(1, key);
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            logger.error("Fehler beim Entfernen der Whitelist-Gruppe {}", key, e);
+            return false;
+        }
+    }
+
+    public boolean isGroupWhitelisted(String group) {
+        if (group == null) return false;
+        return whitelistedGroups.contains(group.toLowerCase(Locale.ROOT));
     }
 
     public Set<String> getWhitelistedGroups() {
@@ -199,7 +414,7 @@ public class MaintenanceService {
     }
 
     // =====================================================================
-    // PRO-SERVER-MAINTENANCE
+    // PRO-SERVER-MAINTENANCE (weiterhin nur in Memory)
     // =====================================================================
 
     public void setServerMaintenance(String backend, boolean enabled) {
@@ -222,5 +437,14 @@ public class MaintenanceService {
 
     public Set<String> getServersInMaintenance() {
         return Set.copyOf(serverMaintenance);
+    }
+
+    // =====================================================================
+    // SHUTDOWN
+    // =====================================================================
+
+    public void shutdown() {
+        logger.info("MaintenanceService: Scheduler wird heruntergefahren...");
+        scheduler.shutdownNow();
     }
 }

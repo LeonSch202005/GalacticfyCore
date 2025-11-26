@@ -30,13 +30,21 @@ public class EventCommand implements SimpleCommand {
     @Override
     public void execute(Invocation invocation) {
         if (!(invocation.source() instanceof Player player)) {
-            invocation.source().sendMessage(prefix().append(Component.text("§cDieser Befehl ist nur für Spieler.")));
+            invocation.source().sendMessage(prefix().append(
+                    Component.text("§cDieser Befehl ist nur für Spieler.")
+            ));
             return;
         }
 
-        // Rank-Permission-System (hier wirkt auch "*" usw.)
-        if (!perms.hasRankPermission(player, "galacticfy.event.join")) {
-            player.sendMessage(prefix().append(Component.text("§cDu hast keine Berechtigung, dem Event beizutreten.")));
+        // Zentrale Plugin-Permission (inkl. Rank-System + "*")
+        boolean allowed = (perms != null)
+                ? perms.hasPluginPermission(player, "galacticfy.event.join")
+                : player.hasPermission("galacticfy.event.join");
+
+        if (!allowed) {
+            player.sendMessage(prefix().append(
+                    Component.text("§cDu hast keine Berechtigung, dem Event beizutreten.")
+            ));
             return;
         }
 
@@ -53,8 +61,11 @@ public class EventCommand implements SimpleCommand {
     @Override
     public boolean hasPermission(Invocation invocation) {
         if (!(invocation.source() instanceof Player player)) {
-            return true; // Konsole
+            return true; // Konsole darf immer
         }
-        return perms.hasRankPermission(player, "galacticfy.event.join");
+
+        return (perms != null)
+                ? perms.hasPluginPermission(player, "galacticfy.event.join")
+                : player.hasPermission("galacticfy.event.join");
     }
 }

@@ -55,11 +55,13 @@ public class MaintenanceCommand implements SimpleCommand {
 
     private final MiniMessage mm = MiniMessage.miniMessage();
 
-    public MaintenanceCommand(MaintenanceService maintenanceService,
-                              ProxyServer proxy,
-                              DiscordWebhookNotifier discordNotifier,
-                              boolean wartungLayout,
-                              GalacticfyPermissionService permissionService) {
+    public MaintenanceCommand(
+            MaintenanceService maintenanceService,
+            ProxyServer proxy,
+            DiscordWebhookNotifier discordNotifier,
+            boolean wartungLayout,
+            GalacticfyPermissionService permissionService
+    ) {
         this.maintenanceService = maintenanceService;
         this.proxy = proxy;
         this.discordNotifier = discordNotifier;
@@ -116,12 +118,12 @@ public class MaintenanceCommand implements SimpleCommand {
 
         String full = "galacticfy.maintenance." + subNode;
 
-        // Erst Rank-System (mit * / wildcards)
-        if (permissionService != null && permissionService.hasRankPermission(player, full)) {
-            return true;
+        if (permissionService != null) {
+            // benutzt dein Rank-System (inkl. "*") + Fallback
+            return permissionService.hasPluginPermission(source, full);
         }
 
-        // Fallback auf normale Velocity-Permissions
+        // falls aus irgendeinem Grund kein permissionService da ist
         return player.hasPermission(full);
     }
 
@@ -135,6 +137,40 @@ public class MaintenanceCommand implements SimpleCommand {
                 || hasMaintPerm(source, "advanced")
                 || hasMaintPerm(source, "whitelist")
                 || hasMaintPerm(source, "perserver");
+    }
+
+    /**
+     * Zentraler Bypass-Check für Maintenance:
+     *  - Rollen-Flag (maintenance_bypass)
+     *  - Plugin-Permissions aus deinem System (inkl. Wildcards)
+     *  - Fallback: normale Velocity-/LP-Permissions
+     */
+    private boolean isBypassedForMaintenance(Player player) {
+        if (permissionService != null) {
+            // 1) Rollenflag aus deinem Ranksystem
+            if (permissionService.hasMaintenanceBypass(player)) {
+                return true;
+            }
+
+            // 2) Konkrete Bypass-Permission über dein Ranksystem
+            if (permissionService.hasPluginPermission(player, "galacticfy.maintenance.bypass")) {
+                return true;
+            }
+
+            // 3) Wildcards aus deinem System
+            if (permissionService.hasPluginPermission(player, "galacticfy.*")) {
+                return true;
+            }
+
+            if (permissionService.hasPluginPermission(player, "*")) {
+                return true;
+            }
+        }
+
+        // 4) Fallback: andere Plugins / OP / Velocity
+        return player.hasPermission("galacticfy.maintenance.bypass")
+                || player.hasPermission("galacticfy.*")
+                || player.hasPermission("*");
     }
 
     // =====================================================================
@@ -609,8 +645,8 @@ public class MaintenanceCommand implements SimpleCommand {
         );
 
         for (Player player : proxy.getAllPlayers()) {
-            // Rank-BYPASS (z.B. Owner, Admin)
-            if (permissionService != null && permissionService.hasMaintenanceBypass(player)) {
+            // Bypass über Rank-System / Permissions
+            if (isBypassedForMaintenance(player)) {
                 continue;
             }
             // Spieler-Whitelist
@@ -658,7 +694,7 @@ public class MaintenanceCommand implements SimpleCommand {
             );
 
             for (Player player : proxy.getAllPlayers()) {
-                if (permissionService != null && permissionService.hasMaintenanceBypass(player)) {
+                if (isBypassedForMaintenance(player)) {
                     continue;
                 }
                 if (maintenanceService.isPlayerWhitelisted(player.getUsername())) {
@@ -679,7 +715,7 @@ public class MaintenanceCommand implements SimpleCommand {
 
         for (Player player : proxy.getAllPlayers()) {
 
-            if ((permissionService != null && permissionService.hasMaintenanceBypass(player))
+            if (isBypassedForMaintenance(player)
                     || maintenanceService.isPlayerWhitelisted(player.getUsername())) {
                 continue;
             }

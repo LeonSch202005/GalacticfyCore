@@ -35,8 +35,15 @@ public class SendCommand implements SimpleCommand {
         if (!(source instanceof Player player)) {
             return true;
         }
-        // Rank-Permission-System (hier wirkt auch "*" usw.)
-        return perms.hasRankPermission(player, "galacticfy.command.send");
+
+        String node = "galacticfy.command.send";
+
+        if (perms != null) {
+            // Zentrale Plugin-Permission (inkl. "*", Wildcards, LP-Fallback)
+            return perms.hasPluginPermission(source, node);
+        }
+
+        return player.hasPermission(node);
     }
 
     @Override

@@ -5,6 +5,7 @@ import com.velocitypowered.api.command.CommandManager;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
+import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.proxy.ProxyServer;
 import de.galacticfy.core.command.*;
@@ -12,6 +13,7 @@ import de.galacticfy.core.database.DatabaseManager;
 import de.galacticfy.core.database.DatabaseMigrationService;
 import de.galacticfy.core.listener.ConnectionProtectionListener;
 import de.galacticfy.core.listener.MaintenanceListener;
+import de.galacticfy.core.listener.PermissionsSetupListener;
 import de.galacticfy.core.motd.GalacticfyMotdProvider;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
 import de.galacticfy.core.service.MaintenanceService;
@@ -30,8 +32,8 @@ public class GalacticfyCore {
     private final ProxyServer proxy;
     private final Logger logger;
 
-    private final ServerTeleportService teleportService;
-    private final MaintenanceService maintenanceService;
+    private ServerTeleportService teleportService;
+    private MaintenanceService maintenanceService;
 
     private DatabaseManager databaseManager;
     private GalacticfyPermissionService permissionService;
@@ -41,8 +43,6 @@ public class GalacticfyCore {
     public GalacticfyCore(ProxyServer proxy, Logger logger) {
         this.proxy = proxy;
         this.logger = logger;
-        this.teleportService = new ServerTeleportService(proxy, logger);
-        this.maintenanceService = new MaintenanceService(logger);
     }
 
     @Subscribe
@@ -54,7 +54,11 @@ public class GalacticfyCore {
         this.databaseManager.init();
         new DatabaseMigrationService(databaseManager, logger).runMigrations();
 
-        // Eigenes Rollen-/Permission-System (ohne LuckPerms)
+        // Services
+        this.teleportService = new ServerTeleportService(proxy, logger);
+        this.maintenanceService = new MaintenanceService(logger, databaseManager);
+
+        // Eigenes Permission- / Rollen-System
         this.permissionService = new GalacticfyPermissionService(databaseManager, logger);
 
         // Discord-Webhook
@@ -64,24 +68,25 @@ public class GalacticfyCore {
         CommandManager commandManager = proxy.getCommandManager();
 
         // Teleport-Commands
-        commandManager.register(
-                commandManager.metaBuilder("hub").aliases("lobby", "spawn").build(),
-                new HubCommand(teleportService, maintenanceService)
-        );
+        CommandMeta hubMeta = commandManager.metaBuilder("hub")
+                .aliases("lobby", "spawn")
+                .build();
+        commandManager.register(hubMeta, new HubCommand(teleportService, maintenanceService));
 
-        commandManager.register(
-                commandManager.metaBuilder("citybuild").aliases("cb").build(),
-                new CitybuildCommand(teleportService, maintenanceService)
-        );
+        CommandMeta cbMeta = commandManager.metaBuilder("citybuild")
+                .aliases("cb")
+                .build();
+        commandManager.register(cbMeta, new CitybuildCommand(teleportService, maintenanceService));
 
-        commandManager.register(
-                commandManager.metaBuilder("skyblock").aliases("sb").build(),
-                new SkyblockCommand(teleportService, maintenanceService)
-        );
+        CommandMeta sbMeta = commandManager.metaBuilder("skyblock")
+                .aliases("sb")
+                .build();
+        commandManager.register(sbMeta, new SkyblockCommand(teleportService, maintenanceService));
 
         CommandMeta eventMeta = commandManager.metaBuilder("event")
                 .build();
         commandManager.register(eventMeta, new EventCommand(teleportService, maintenanceService, permissionService));
+
 
         CommandMeta sendMeta = commandManager.metaBuilder("send")
                 .build();
@@ -89,30 +94,44 @@ public class GalacticfyCore {
 
 
         // Maintenance (EN / DE Layout)
+        CommandMeta maintenanceMeta = commandManager.metaBuilder("maintenance").build();
         commandManager.register(
-                commandManager.metaBuilder("maintenance").build(),
+                maintenanceMeta,
                 new MaintenanceCommand(maintenanceService, proxy, discordNotifier, false, permissionService)
         );
 
+        CommandMeta wartungMeta = commandManager.metaBuilder("wartung").build();
         commandManager.register(
-                commandManager.metaBuilder("wartung").build(),
+                wartungMeta,
                 new MaintenanceCommand(maintenanceService, proxy, discordNotifier, true, permissionService)
         );
 
         // Rank / Rollen-Verwaltung
-        commandManager.register(
-                commandManager.metaBuilder("rank").build(),
-                new RankCommand(permissionService, proxy)
-        );
+        CommandMeta rankMeta = commandManager.metaBuilder("rank").build();
+        commandManager.register(rankMeta, new RankCommand(permissionService, proxy));
 
         // Listener
-        proxy.getEventManager().register(this,
-                new ConnectionProtectionListener(logger, proxy, maintenanceService));
-        proxy.getEventManager().register(this,
-                new GalacticfyMotdProvider(maintenanceService));
-        proxy.getEventManager().register(this,
-                new MaintenanceListener(maintenanceService, logger));
+        proxy.getEventManager().register(this, new ConnectionProtectionListener(logger, proxy, maintenanceService));
+        proxy.getEventManager().register(this, new GalacticfyMotdProvider(maintenanceService));
+        proxy.getEventManager().register(this, new MaintenanceListener(maintenanceService, logger, permissionService));
+        proxy.getEventManager().register(this, new PermissionsSetupListener(permissionService, logger));
+
 
         logger.info("GalacticfyCore: Commands & Listener registriert.");
+    }
+
+    @Subscribe
+    public void onProxyShutdown(ProxyShutdownEvent event) {
+        logger.info("GalacticfyCore fährt herunter, schließe Ressourcen...");
+
+        if (maintenanceService != null) {
+            maintenanceService.shutdown(); // falls du in MaintenanceService eine shutdown()-Methode hast
+        }
+
+        if (databaseManager != null) {
+            databaseManager.shutdown();
+        }
+
+        logger.info("GalacticfyCore: Shutdown abgeschlossen.");
     }
 }
