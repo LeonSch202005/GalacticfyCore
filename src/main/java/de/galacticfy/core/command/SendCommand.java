@@ -1,8 +1,10 @@
 package de.galacticfy.core.command;
 
+import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
+import de.galacticfy.core.permission.GalacticfyPermissionService;
 import de.galacticfy.core.service.ServerTeleportService;
 import net.kyori.adventure.text.Component;
 
@@ -14,22 +16,41 @@ public class SendCommand implements SimpleCommand {
 
     private final ProxyServer proxy;
     private final ServerTeleportService teleportService;
+    private final GalacticfyPermissionService perms;
 
-    public SendCommand(ProxyServer proxy, ServerTeleportService teleportService) {
+    public SendCommand(ProxyServer proxy,
+                       ServerTeleportService teleportService,
+                       GalacticfyPermissionService perms) {
         this.proxy = proxy;
         this.teleportService = teleportService;
+        this.perms = perms;
+    }
+
+    private Component prefix() {
+        return Component.text("§8[§bGalacticfy§8] §r");
+    }
+
+    private boolean hasSendPermission(CommandSource source) {
+        // Konsole darf immer
+        if (!(source instanceof Player player)) {
+            return true;
+        }
+        // Rank-Permission-System (hier wirkt auch "*" usw.)
+        return perms.hasRankPermission(player, "galacticfy.command.send");
     }
 
     @Override
     public void execute(Invocation invocation) {
-        if (!invocation.source().hasPermission("galacticfy.command.send")) {
-            invocation.source().sendMessage(Component.text("§cDazu hast du keine Berechtigung."));
+        CommandSource src = invocation.source();
+
+        if (!hasSendPermission(src)) {
+            src.sendMessage(prefix().append(Component.text("§cDazu hast du keine Berechtigung.")));
             return;
         }
 
         String[] args = invocation.arguments();
         if (args.length < 2) {
-            invocation.source().sendMessage(Component.text("§eBenutzung: /send <Spieler> <Server>"));
+            src.sendMessage(prefix().append(Component.text("§eBenutzung: §b/send <Spieler> <Server>")));
             return;
         }
 
@@ -38,23 +59,24 @@ public class SendCommand implements SimpleCommand {
 
         Optional<Player> optional = proxy.getPlayer(targetName);
         if (optional.isEmpty()) {
-            invocation.source().sendMessage(Component.text("§cSpieler \"" + targetName + "\" wurde nicht gefunden."));
+            src.sendMessage(prefix().append(Component.text("§cSpieler \"" + targetName + "\" wurde nicht gefunden.")));
             return;
         }
 
         Player target = optional.get();
         teleportService.sendToServer(target, backendName, backendName, true);
-        invocation.source().sendMessage(Component.text("§aSende §e" + target.getUsername() + " §aan Server §e" + backendName + "§a."));
+        src.sendMessage(prefix().append(Component.text("§aSende §e" + target.getUsername() + " §aan Server §e" + backendName + "§a.")));
     }
 
     @Override
     public boolean hasPermission(Invocation invocation) {
-        return invocation.source().hasPermission("galacticfy.command.send");
+        return hasSendPermission(invocation.source());
     }
 
     @Override
     public List<String> suggest(Invocation invocation) {
-        if (!invocation.source().hasPermission("galacticfy.command.send")) {
+        CommandSource src = invocation.source();
+        if (!hasSendPermission(src)) {
             return List.of();
         }
 

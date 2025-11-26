@@ -5,16 +5,12 @@ import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
+import de.galacticfy.core.permission.GalacticfyPermissionService;
 import de.galacticfy.core.service.MaintenanceService;
 import de.galacticfy.core.util.DiscordWebhookNotifier;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.title.Title;
-import net.luckperms.api.LuckPerms;
-import net.luckperms.api.model.group.Group;
-import net.luckperms.api.model.user.User;
-import net.luckperms.api.node.NodeType;
-import net.luckperms.api.node.types.InheritanceNode;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -31,7 +27,7 @@ import java.util.concurrent.TimeUnit;
  * Features:
  *  - global on/off/toggle/status/help
  *  - zeitgesteuerte Wartungen
- *  - Whitelist für Spieler & LuckPerms-Gruppen
+ *  - Whitelist für Spieler & Gruppen (nur Namen, kein LuckPerms)
  *  - Pro-Server-Maintenance: /maintenance server <Backend> on/off/status
  *  - 1-Minuten-Countdown pro Server
  *  - Ingame-Countdown + Title + Actionbar
@@ -46,8 +42,10 @@ public class MaintenanceCommand implements SimpleCommand {
 
     private final MaintenanceService maintenanceService;
     private final ProxyServer proxy;
-    private final LuckPerms luckPerms;
     private final DiscordWebhookNotifier discordNotifier;
+
+    // eigenes Rollen-/Permission-System (mit * usw.)
+    private final GalacticfyPermissionService permissionService;
 
     // welches Layout?
     private final boolean wartungLayout;
@@ -59,14 +57,14 @@ public class MaintenanceCommand implements SimpleCommand {
 
     public MaintenanceCommand(MaintenanceService maintenanceService,
                               ProxyServer proxy,
-                              LuckPerms luckPerms,
                               DiscordWebhookNotifier discordNotifier,
-                              boolean wartungLayout) {
+                              boolean wartungLayout,
+                              GalacticfyPermissionService permissionService) {
         this.maintenanceService = maintenanceService;
         this.proxy = proxy;
-        this.luckPerms = luckPerms;
         this.discordNotifier = discordNotifier;
         this.wartungLayout = wartungLayout;
+        this.permissionService = permissionService;
     }
 
     // ------------------------------------------------------------
@@ -106,6 +104,39 @@ public class MaintenanceCommand implements SimpleCommand {
         return "Konsole";
     }
 
+    // ------------------------------------------------------------
+    // Permission-Helper (hier greift auch "*")
+    // ------------------------------------------------------------
+
+    private boolean hasMaintPerm(CommandSource source, String subNode) {
+        // Konsole darf immer
+        if (!(source instanceof Player player)) {
+            return true;
+        }
+
+        String full = "galacticfy.maintenance." + subNode;
+
+        // Erst Rank-System (mit * / wildcards)
+        if (permissionService != null && permissionService.hasRankPermission(player, full)) {
+            return true;
+        }
+
+        // Fallback auf normale Velocity-Permissions
+        return player.hasPermission(full);
+    }
+
+    private void noPerm(CommandSource source) {
+        source.sendMessage(prefix().append(Component.text("§cDazu hast du keine Berechtigung.")));
+    }
+
+    private boolean hasAnyMaintenancePermission(CommandSource source) {
+        return hasMaintPerm(source, "view")
+                || hasMaintPerm(source, "simple")
+                || hasMaintPerm(source, "advanced")
+                || hasMaintPerm(source, "whitelist")
+                || hasMaintPerm(source, "perserver");
+    }
+
     // =====================================================================
     // EXECUTE
     // =====================================================================
@@ -141,7 +172,7 @@ public class MaintenanceCommand implements SimpleCommand {
         }
 
         if (sub.equals("server")) {
-            if (!source.hasPermission("galacticfy.maintenance.perserver")) {
+            if (!hasMaintPerm(source, "perserver")) {
                 noPerm(source);
                 return;
             }
@@ -151,16 +182,16 @@ public class MaintenanceCommand implements SimpleCommand {
 
         switch (sub) {
             case "on" -> {
-                if (!source.hasPermission("galacticfy.maintenance.simple")
-                        && !source.hasPermission("galacticfy.maintenance.advanced")) {
+                if (!hasMaintPerm(source, "simple")
+                        && !hasMaintPerm(source, "advanced")) {
                     noPerm(source);
                     return;
                 }
                 handleOn(source, args);
             }
             case "off" -> {
-                if (!source.hasPermission("galacticfy.maintenance.simple")
-                        && !source.hasPermission("galacticfy.maintenance.advanced")) {
+                if (!hasMaintPerm(source, "simple")
+                        && !hasMaintPerm(source, "advanced")) {
                     noPerm(source);
                     return;
                 }
@@ -174,8 +205,8 @@ public class MaintenanceCommand implements SimpleCommand {
                 }
             }
             case "toggle" -> {
-                if (!source.hasPermission("galacticfy.maintenance.simple")
-                        && !source.hasPermission("galacticfy.maintenance.advanced")) {
+                if (!hasMaintPerm(source, "simple")
+                        && !hasMaintPerm(source, "advanced")) {
                     noPerm(source);
                     return;
                 }
@@ -204,9 +235,9 @@ public class MaintenanceCommand implements SimpleCommand {
                 }
             }
             case "status" -> {
-                if (!source.hasPermission("galacticfy.maintenance.view")
-                        && !source.hasPermission("galacticfy.maintenance.simple")
-                        && !source.hasPermission("galacticfy.maintenance.advanced")) {
+                if (!hasMaintPerm(source, "view")
+                        && !hasMaintPerm(source, "simple")
+                        && !hasMaintPerm(source, "advanced")) {
                     noPerm(source);
                     return;
                 }
@@ -247,18 +278,6 @@ public class MaintenanceCommand implements SimpleCommand {
             }
             default -> sendUsage(source);
         }
-    }
-
-    private void noPerm(CommandSource source) {
-        source.sendMessage(prefix().append(Component.text("§cDazu hast du keine Berechtigung.")));
-    }
-
-    private boolean hasAnyMaintenancePermission(CommandSource source) {
-        return source.hasPermission("galacticfy.maintenance.view")
-                || source.hasPermission("galacticfy.maintenance.simple")
-                || source.hasPermission("galacticfy.maintenance.advanced")
-                || source.hasPermission("galacticfy.maintenance.whitelist")
-                || source.hasPermission("galacticfy.maintenance.perserver");
     }
 
     // =====================================================================
@@ -326,7 +345,7 @@ public class MaintenanceCommand implements SimpleCommand {
         }
 
         if (args.length >= 3 && args[1].equalsIgnoreCase("time")) {
-            if (!source.hasPermission("galacticfy.maintenance.advanced")) {
+            if (!hasMaintPerm(source, "advanced")) {
                 source.sendMessage(prefix().append(Component.text("§cDazu hast du keine Berechtigung (Advanced-Timer).")));
                 return;
             }
@@ -443,7 +462,7 @@ public class MaintenanceCommand implements SimpleCommand {
     // =====================================================================
 
     private void handleWhitelist(CommandSource source, String[] args) {
-        if (!source.hasPermission("galacticfy.maintenance.whitelist")) {
+        if (!hasMaintPerm(source, "whitelist")) {
             noPerm(source);
             return;
         }
@@ -564,9 +583,9 @@ public class MaintenanceCommand implements SimpleCommand {
         source.sendMessage(Component.text("§8» §b/" + (wartungLayout ? "wartung" : "maintenance") + " whitelist removeplayer <Name>"));
         source.sendMessage(Component.text("   §7Spieler von der Whitelist entfernen."));
         source.sendMessage(Component.text("§8» §b/" + (wartungLayout ? "wartung" : "maintenance") + " whitelist addgroup <Gruppe>"));
-        source.sendMessage(Component.text("   §7LuckPerms-Gruppe hinzufügen."));
+        source.sendMessage(Component.text("   §7Gruppe hinzufügen (nur Name, kein LP)."));
         source.sendMessage(Component.text("§8» §b/" + (wartungLayout ? "wartung" : "maintenance") + " whitelist removegroup <Gruppe>"));
-        source.sendMessage(Component.text("   §7LuckPerms-Gruppe entfernen."));
+        source.sendMessage(Component.text("   §7Gruppe entfernen."));
         source.sendMessage(Component.text(" "));
 
         source.sendMessage(Component.text("§8§m────────────────────────────────"));
@@ -576,26 +595,6 @@ public class MaintenanceCommand implements SimpleCommand {
     // =====================================================================
     // KICKS & FALLBACK
     // =====================================================================
-
-    private boolean hasWhitelistedGroup(Player player) {
-        if (luckPerms == null || maintenanceService.getWhitelistedGroups().isEmpty()) {
-            return false;
-        }
-
-        User user = luckPerms.getUserManager().getUser(player.getUniqueId());
-        if (user == null) {
-            return false;
-        }
-
-        var whitelistedGroups = maintenanceService.getWhitelistedGroups();
-
-        return user.getNodes().stream()
-                .filter(NodeType.INHERITANCE::matches)
-                .map(NodeType.INHERITANCE::cast)
-                .map(InheritanceNode::getGroupName)
-                .map(name -> name.toLowerCase(Locale.ROOT))
-                .anyMatch(whitelistedGroups::contains);
-    }
 
     private void kickNonBypassPlayers() {
         Component kickMessage = mm.deserialize(
@@ -610,13 +609,12 @@ public class MaintenanceCommand implements SimpleCommand {
         );
 
         for (Player player : proxy.getAllPlayers()) {
-            if (player.hasPermission("galacticfy.maintenance.bypass")) {
+            // Rank-BYPASS (z.B. Owner, Admin)
+            if (permissionService != null && permissionService.hasMaintenanceBypass(player)) {
                 continue;
             }
+            // Spieler-Whitelist
             if (maintenanceService.isPlayerWhitelisted(player.getUsername())) {
-                continue;
-            }
-            if (hasWhitelistedGroup(player)) {
                 continue;
             }
             player.disconnect(kickMessage);
@@ -660,9 +658,10 @@ public class MaintenanceCommand implements SimpleCommand {
             );
 
             for (Player player : proxy.getAllPlayers()) {
-                if (player.hasPermission("galacticfy.maintenance.bypass")
-                        || maintenanceService.isPlayerWhitelisted(player.getUsername())
-                        || hasWhitelistedGroup(player)) {
+                if (permissionService != null && permissionService.hasMaintenanceBypass(player)) {
+                    continue;
+                }
+                if (maintenanceService.isPlayerWhitelisted(player.getUsername())) {
                     continue;
                 }
 
@@ -680,9 +679,8 @@ public class MaintenanceCommand implements SimpleCommand {
 
         for (Player player : proxy.getAllPlayers()) {
 
-            if (player.hasPermission("galacticfy.maintenance.bypass")
-                    || maintenanceService.isPlayerWhitelisted(player.getUsername())
-                    || hasWhitelistedGroup(player)) {
+            if ((permissionService != null && permissionService.hasMaintenanceBypass(player))
+                    || maintenanceService.isPlayerWhitelisted(player.getUsername())) {
                 continue;
             }
 
@@ -771,6 +769,7 @@ public class MaintenanceCommand implements SimpleCommand {
                                         Component.text(color + "Wartung"),
                                         Component.text("§fBeginnt in " + color + secondsLeft + "§f Sekunde"
                                                 + (secondsLeft == 1 ? "" : "n") + "."),
+
                                         Title.Times.times(
                                                 Duration.ofMillis(250),
                                                 Duration.ofSeconds(1),
@@ -850,6 +849,7 @@ public class MaintenanceCommand implements SimpleCommand {
                                         Component.text(color + "Wartung §7(" + backend + ")"),
                                         Component.text("§fBeginnt in " + color + secondsLeft + "§f Sekunde"
                                                 + (secondsLeft == 1 ? "" : "n") + "."),
+
                                         Title.Times.times(
                                                 Duration.ofMillis(250),
                                                 Duration.ofSeconds(1),
@@ -1032,7 +1032,7 @@ public class MaintenanceCommand implements SimpleCommand {
         }
 
         if (args[0].equalsIgnoreCase("whitelist") || args[0].equalsIgnoreCase("wl")) {
-            if (!source.hasPermission("galacticfy.maintenance.whitelist")) {
+            if (!hasMaintPerm(source, "whitelist")) {
                 return List.of();
             }
 
@@ -1060,11 +1060,8 @@ public class MaintenanceCommand implements SimpleCommand {
                                 .toList();
                     }
                     case "addgroup" -> {
-                        if (luckPerms == null) return List.of();
-                        return luckPerms.getGroupManager().getLoadedGroups().stream()
-                                .map(Group::getName)
-                                .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(prefix))
-                                .toList();
+                        // keine externe Source → einfach nichts vorschlagen
+                        return List.of();
                     }
                     case "removegroup" -> {
                         var groups = maintenanceService.getWhitelistedGroups();
@@ -1079,7 +1076,7 @@ public class MaintenanceCommand implements SimpleCommand {
         }
 
         if (args[0].equalsIgnoreCase("server")) {
-            if (!source.hasPermission("galacticfy.maintenance.perserver")) {
+            if (!hasMaintPerm(source, "perserver")) {
                 return List.of();
             }
 

@@ -27,12 +27,18 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- LuckPerms API -->
+        <!-- HikariCP -->
         <dependency>
-            <groupId>net.luckperms</groupId>
-            <artifactId>api</artifactId>
-            <version>5.4</version>
-            <scope>provided</scope>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>5.1.0</version>
+        </dependency>
+
+        <!-- MariaDB JDBC Driver -->
+        <dependency>
+            <groupId>org.mariadb.jdbc</groupId>
+            <artifactId>mariadb-java-client</artifactId>
+            <version>3.4.1</version>
         </dependency>
     </dependencies>
 
@@ -45,6 +51,7 @@
 
     <build>
         <plugins>
+
             <!-- Java Compiler -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -60,14 +67,39 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>3.3.0</version>
-                <configuration>
-                    <archive>
-                        <manifestEntries>
-                            <Implementation-Version>${project.version}</Implementation-Version>
-                        </manifestEntries>
-                    </archive>
-                </configuration>
             </plugin>
+
+            <!-- Shade Plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+
+                            <relocations>
+                                <relocation>
+                                    <pattern>com.zaxxer.hikari</pattern>
+                                    <shadedPattern>de.galacticfy.core.libs.hikari</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>org.mariadb.jdbc</pattern>
+                                    <shadedPattern>de.galacticfy.core.libs.mariadb</shadedPattern>
+                                </relocation>
+                            </relocations>
+
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
         </plugins>
     </build>
 
