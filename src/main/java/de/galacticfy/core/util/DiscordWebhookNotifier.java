@@ -31,13 +31,6 @@ public class DiscordWebhookNotifier {
         return webhookUrl != null && !webhookUrl.isBlank();
     }
 
-    /**
-     * Geplante Wartung: Wartung wird in X starten.
-     *
-     * @param by       Wer hat geplant
-     * @param duration Dauer-Text (z.B. "30m" oder "1h 30m")
-     * @param startsIn Start-Text (z.B. "10m")
-     */
     public void sendMaintenancePlanned(String by, String duration, String startsIn) {
         if (!isEnabled()) {
             return;
@@ -53,7 +46,7 @@ public class DiscordWebhookNotifier {
 
         String footerText = "GalacticfyCore • Maintenance";
         String timestamp = Instant.now().toString();
-        int color = 0xFAA61A; // Orange
+        int color = 0xFAA61A;
 
         String json = buildPlannedEmbedPayload(
                 title,
@@ -69,12 +62,6 @@ public class DiscordWebhookNotifier {
         sendAsync(json);
     }
 
-    /**
-     * Wartung ist jetzt aktiv.
-     *
-     * @param by       Wer hat gestartet
-     * @param duration Dauer-Text (z.B. "30m" oder "unbekannt")
-     */
     public void sendMaintenanceStarted(String by, String duration) {
         if (!isEnabled()) {
             return;
@@ -89,7 +76,7 @@ public class DiscordWebhookNotifier {
 
         String footerText = "GalacticfyCore • Maintenance";
         String timestamp = Instant.now().toString();
-        int color = 0x57F287; // Grün
+        int color = 0x57F287;
 
         String json = buildStartedEmbedPayload(
                 title,
@@ -104,11 +91,6 @@ public class DiscordWebhookNotifier {
         sendAsync(json);
     }
 
-    /**
-     * Wartung beendet.
-     *
-     * @param by Wer hat beendet
-     */
     public void sendMaintenanceEnd(String by) {
         if (!isEnabled()) {
             return;
@@ -122,7 +104,7 @@ public class DiscordWebhookNotifier {
 
         String footerText = "GalacticfyCore • Maintenance";
         String timestamp = Instant.now().toString();
-        int color = 0x57F287; // Grün
+        int color = 0x57F287;
 
         String json = buildEndEmbedPayload(
                 title,
@@ -135,10 +117,6 @@ public class DiscordWebhookNotifier {
 
         sendAsync(json);
     }
-
-    // ------------------------------------------------------------------------
-    // Embed-Payloads
-    // ------------------------------------------------------------------------
 
     private String buildPlannedEmbedPayload(
             String title,
@@ -158,23 +136,19 @@ public class DiscordWebhookNotifier {
         sb.append("\"description\":\"").append(escapeJson(description)).append("\",");
         sb.append("\"color\":").append(color).append(",");
 
-        // Felder
         sb.append("\"fields\":[");
-        // Ausgeführt von
         sb.append("{")
                 .append("\"name\":\"").append(escapeJson("👤 Ausgeführt von")).append("\",")
                 .append("\"value\":\"").append(escapeJson("• `" + by + "`")).append("\",")
                 .append("\"inline\":false")
                 .append("},");
 
-        // Dauer
         sb.append("{")
                 .append("\"name\":\"").append(escapeJson("⏱ Dauer")).append("\",")
                 .append("\"value\":\"").append(escapeJson("• " + duration)).append("\",")
                 .append("\"inline\":true")
                 .append("},");
 
-        // Beginn in
         sb.append("{")
                 .append("\"name\":\"").append(escapeJson("⏰ Beginn in")).append("\",")
                 .append("\"value\":\"").append(escapeJson("• " + startsIn)).append("\",")
@@ -182,15 +156,13 @@ public class DiscordWebhookNotifier {
                 .append("}");
         sb.append("],");
 
-        // Footer
         sb.append("\"footer\":{")
                 .append("\"text\":\"").append(escapeJson(footerText)).append("\"")
                 .append("},");
 
-        // Timestamp
         sb.append("\"timestamp\":\"").append(escapeJson(timestamp)).append("\"");
 
-        sb.append("}]"); // embeds
+        sb.append("}]");
         sb.append("}");
 
         return sb.toString();
@@ -213,16 +185,13 @@ public class DiscordWebhookNotifier {
         sb.append("\"description\":\"").append(escapeJson(description)).append("\",");
         sb.append("\"color\":").append(color).append(",");
 
-        // Felder
         sb.append("\"fields\":[");
-        // Ausgeführt von
         sb.append("{")
                 .append("\"name\":\"").append(escapeJson("👤 Ausgeführt von")).append("\",")
                 .append("\"value\":\"").append(escapeJson("• `" + by + "`")).append("\",")
                 .append("\"inline\":false")
                 .append("},");
 
-        // Dauer
         sb.append("{")
                 .append("\"name\":\"").append(escapeJson("⏱ Dauer")).append("\",")
                 .append("\"value\":\"").append(escapeJson("• " + duration)).append("\",")
@@ -230,7 +199,6 @@ public class DiscordWebhookNotifier {
                 .append("}");
         sb.append("],");
 
-        // Footer + Zeit
         sb.append("\"footer\":{")
                 .append("\"text\":\"").append(escapeJson(footerText)).append("\"")
                 .append("},");
@@ -277,10 +245,6 @@ public class DiscordWebhookNotifier {
         return sb.toString();
     }
 
-    // ------------------------------------------------------------------------
-    // HTTP
-    // ------------------------------------------------------------------------
-
     private void sendAsync(String json) {
         executor.submit(() -> {
             try {
@@ -314,5 +278,12 @@ public class DiscordWebhookNotifier {
                 .replace("\"", "\\\"")
                 .replace("\n", "\\n")
                 .replace("\r", "\\r");
+    }
+
+    /**
+     * Sollte beim Proxy-Shutdown aufgerufen werden, um den Executor sauber zu schließen.
+     */
+    public void shutdown() {
+        executor.shutdownNow();
     }
 }

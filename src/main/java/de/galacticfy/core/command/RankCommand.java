@@ -4,6 +4,7 @@ import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
+import com.velocitypowered.api.proxy.player.TabListEntry;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
 import net.kyori.adventure.text.Component;
 
@@ -30,7 +31,6 @@ public class RankCommand implements SimpleCommand {
 
     private boolean isRankAdmin(CommandSource src) {
         if (perms == null) {
-            // falls aus irgendeinem Grund nicht initialisiert → Konsole ok, Spieler nur normale Permission
             if (src instanceof Player player) {
                 return player.hasPermission(ADMIN_PERMISSION);
             }
@@ -39,11 +39,6 @@ public class RankCommand implements SimpleCommand {
 
         return perms.hasPluginPermission(src, ADMIN_PERMISSION);
     }
-
-
-    // ============================================================
-    // EXECUTE
-    // ============================================================
 
     @Override
     public void execute(Invocation invocation) {
@@ -55,7 +50,6 @@ public class RankCommand implements SimpleCommand {
             return;
         }
 
-        // Nur /rank → kurzer Überblick
         if (args.length == 0) {
             sendShortOverview(src);
             return;
@@ -63,9 +57,14 @@ public class RankCommand implements SimpleCommand {
 
         String first = args[0].toLowerCase(Locale.ROOT);
 
-        // /rank help
         if (first.equals("help")) {
             sendFullHelp(src);
+            return;
+        }
+
+        // NEU: /rank reload
+        if (first.equals("reload")) {
+            handleReload(src);
             return;
         }
 
@@ -75,6 +74,45 @@ public class RankCommand implements SimpleCommand {
             default -> sendShortOverview(src);
         }
     }
+
+    // ============================================================
+    // RELOAD
+    // ============================================================
+
+    private void handleReload(CommandSource src) {
+        if (!perms.hasPluginPermission(src, ADMIN_PERMISSION)) {
+            src.sendMessage(prefix().append(Component.text("§cDazu hast du keine Berechtigung.")));
+            return;
+        }
+
+        perms.reloadAllCaches();
+
+        // Tablist-DisplayName für alle Spieler neu bauen
+        proxy.getAllPlayers().forEach(viewer -> {
+            var tab = viewer.getTabList();
+            proxy.getAllPlayers().forEach(target -> {
+                var uuid = target.getUniqueId();
+                var displayName = perms.getDisplayName(target);
+
+                tab.getEntry(uuid).ifPresentOrElse(entry -> {
+                    entry.setDisplayName(displayName);
+                }, () -> {
+                    TabListEntry entry = TabListEntry.builder()
+                            .tabList(tab)
+                            .profile(target.getGameProfile())
+                            .displayName(displayName)
+                            .latency(1)
+                            .gameMode(0)
+                            .listed(true)
+                            .build();
+                    tab.addEntry(entry);
+                });
+            });
+        });
+
+        src.sendMessage(prefix().append(Component.text("§aRank-System wurde neu geladen.")));
+    }
+
 
     // ============================================================
     // GROUP SUBCOMMANDS
@@ -88,7 +126,6 @@ public class RankCommand implements SimpleCommand {
 
         String sub = args[1].toLowerCase(Locale.ROOT);
 
-        // /rank group list|create|delete|info|permissions|inherit|set ...
         switch (sub) {
             case "list" -> {
                 handleGroupList(src);
@@ -120,10 +157,8 @@ public class RankCommand implements SimpleCommand {
             }
         }
 
-        // Ab hier: /rank group <name> ...
         String groupName = args[1];
 
-        // /rank group <name>
         if (args.length == 2) {
             showGroupPermissions(src, groupName);
             return;
@@ -152,7 +187,6 @@ public class RankCommand implements SimpleCommand {
         src.sendMessage(Component.text(" "));
     }
 
-    // /rank group create <name> <display> [prio]
     private void handleGroupCreate(CommandSource src, String[] args) {
         if (args.length < 4) {
             src.sendMessage(prefix().append(Component.text(
@@ -174,7 +208,6 @@ public class RankCommand implements SimpleCommand {
             }
         }
 
-        // Default-Werte
         String colorHex = "FFFFFF";
         String prefixStr = "";
         String suffixStr = "";
@@ -189,7 +222,6 @@ public class RankCommand implements SimpleCommand {
         }
     }
 
-    // /rank group delete <name>
     private void handleGroupDelete(CommandSource src, String[] args) {
         if (args.length < 3) {
             src.sendMessage(prefix().append(Component.text("§cBenutzung: §b/rank group delete <name>")));
@@ -205,7 +237,6 @@ public class RankCommand implements SimpleCommand {
         }
     }
 
-    // /rank group info <name>
     private void handleGroupInfo(CommandSource src, String[] args) {
         if (args.length < 3) {
             src.sendMessage(prefix().append(Component.text("§cBenutzung: §b/rank group info <name>")));
@@ -245,7 +276,6 @@ public class RankCommand implements SimpleCommand {
         src.sendMessage(Component.text(" "));
     }
 
-    // /rank group permissions <name>
     private void handleGroupPermissionsList(CommandSource src, String[] args) {
         if (args.length < 3) {
             src.sendMessage(prefix().append(Component.text(
@@ -280,7 +310,6 @@ public class RankCommand implements SimpleCommand {
         src.sendMessage(Component.text(" "));
     }
 
-    // /rank group <name> set permission <node>
     private void handleGroupSetPermission(CommandSource src, String groupName, String[] args) {
         if (args.length < 5 || !"permission".equalsIgnoreCase(args[3])) {
             src.sendMessage(prefix().append(Component.text(
@@ -302,7 +331,6 @@ public class RankCommand implements SimpleCommand {
         }
     }
 
-    // /rank group <name> unset permission <node>
     private void handleGroupUnsetPermission(CommandSource src, String groupName, String[] args) {
         if (args.length < 5 || !"permission".equalsIgnoreCase(args[3])) {
             src.sendMessage(prefix().append(Component.text(
@@ -324,12 +352,6 @@ public class RankCommand implements SimpleCommand {
         }
     }
 
-    // ===== NEU: Meta-Set: /rank group set prefix/suffix ... =====
-
-    /**
-     * /rank group set prefix <Gruppe> <Prefix...>
-     * /rank group set suffix <Gruppe> <Suffix...>
-     */
     private void handleGroupSetMeta(CommandSource src, String[] args) {
         if (args.length < 5) {
             src.sendMessage(prefix().append(Component.text(
@@ -350,7 +372,6 @@ public class RankCommand implements SimpleCommand {
 
         String groupName = args[3];
 
-        // Prefix/Suffix kann Leerzeichen enthalten → Rest joinen
         StringBuilder sb = new StringBuilder();
         for (int i = 4; i < args.length; i++) {
             if (i > 4) sb.append(" ");
@@ -376,8 +397,6 @@ public class RankCommand implements SimpleCommand {
             )));
         }
     }
-
-    // ===== Inherit: /rank group inherit ... =====================
 
     private void handleGroupInherit(CommandSource src, String[] args) {
         if (args.length < 3) {
@@ -458,7 +477,7 @@ public class RankCommand implements SimpleCommand {
     }
 
     // ============================================================
-    // USER SUBCOMMANDS
+    // USER SUBCOMMANDS (mit Offline-Support)
     // ============================================================
 
     private void handleUser(CommandSource src, String[] args) {
@@ -471,22 +490,36 @@ public class RankCommand implements SimpleCommand {
         String action = args[2].toLowerCase(Locale.ROOT);
 
         Player target = proxy.getPlayer(playerName).orElse(null);
-        if (target == null) {
-            src.sendMessage(prefix().append(Component.text("§cSpieler §b" + playerName + " §cist nicht online.")));
-            return;
+        UUID uuid;
+        String storedName;
+
+        if (target != null) {
+            uuid = target.getUniqueId();
+            storedName = target.getUsername();
+        } else {
+            uuid = perms.findUuidByName(playerName);
+            if (uuid == null) {
+                src.sendMessage(prefix().append(Component.text(
+                        "§cSpieler §b" + playerName + " §cist nicht online und in der Datenbank nicht bekannt."
+                )));
+                return;
+            }
+            storedName = playerName;
         }
 
-        UUID uuid = target.getUniqueId();
-
         switch (action) {
-            case "set" -> handleUserSetGroup(src, target, uuid, args);
-            case "unset" -> handleUserUnsetGroup(src, target, uuid, args);
+            case "set" -> handleUserSetGroup(src, target, uuid, storedName, args);
+            case "unset" -> handleUserUnsetGroup(src, target, uuid, storedName, args);
             default -> sendUserUsage(src);
         }
     }
 
     // /rank user <spieler> set group <gruppe> [Dauer]
-    private void handleUserSetGroup(CommandSource src, Player target, UUID uuid, String[] args) {
+    private void handleUserSetGroup(CommandSource src,
+                                    Player targetOrNull,
+                                    UUID uuid,
+                                    String storedName,
+                                    String[] args) {
         if (args.length < 5 || !"group".equalsIgnoreCase(args[3])) {
             src.sendMessage(prefix().append(Component.text(
                     "§cBenutzung: §b/rank user <Spieler> set group <Gruppe> [Dauer]"
@@ -497,7 +530,6 @@ public class RankCommand implements SimpleCommand {
         String groupName = args[4];
         Long durationMs = null;
 
-        // Optional: Dauer erkannt?
         if (args.length >= 6) {
             durationMs = parseDuration(args[5]);
             if (durationMs == null) {
@@ -511,30 +543,34 @@ public class RankCommand implements SimpleCommand {
         boolean ok;
 
         if (durationMs != null) {
-            ok = perms.setRoleForDuration(uuid, target.getUsername(), groupName, durationMs);
+            ok = perms.setRoleForDuration(uuid, storedName, groupName, durationMs);
         } else {
-            ok = perms.setRoleFor(uuid, target.getUsername(), groupName);
+            ok = perms.setRoleFor(uuid, storedName, groupName);
         }
 
         if (ok) {
             if (durationMs != null) {
                 src.sendMessage(prefix().append(Component.text(
-                        "§aSpieler §b" + target.getUsername() +
+                        "§aSpieler §b" + storedName +
                                 " §ahat nun Gruppe §b" + groupName +
                                 " §afür §e" + args[5] + "§a."
                 )));
-                target.sendMessage(prefix().append(Component.text(
-                        "§7Dein Rang wurde zu §b" + groupName +
-                                " §7gesetzt (Dauer: §e" + args[5] + "§7)."
-                )));
+                if (targetOrNull != null) {
+                    targetOrNull.sendMessage(prefix().append(Component.text(
+                            "§7Dein Rang wurde zu §b" + groupName +
+                                    " §7gesetzt (Dauer: §e" + args[5] + "§7)."
+                    )));
+                }
             } else {
                 src.sendMessage(prefix().append(Component.text(
-                        "§aSpieler §b" + target.getUsername() +
+                        "§aSpieler §b" + storedName +
                                 " §ahat nun Gruppe §b" + groupName + "§a."
                 )));
-                target.sendMessage(prefix().append(Component.text(
-                        "§7Deine Gruppe wurde zu §b" + groupName + " §7geändert."
-                )));
+                if (targetOrNull != null) {
+                    targetOrNull.sendMessage(prefix().append(Component.text(
+                            "§7Deine Gruppe wurde zu §b" + groupName + " §7geändert."
+                    )));
+                }
             }
 
         } else {
@@ -545,7 +581,11 @@ public class RankCommand implements SimpleCommand {
     }
 
     // /rank user <spieler> unset group
-    private void handleUserUnsetGroup(CommandSource src, Player target, UUID uuid, String[] args) {
+    private void handleUserUnsetGroup(CommandSource src,
+                                      Player targetOrNull,
+                                      UUID uuid,
+                                      String storedName,
+                                      String[] args) {
         if (args.length >= 4 && !"group".equalsIgnoreCase(args[3])) {
             src.sendMessage(prefix().append(Component.text(
                     "§cBenutzung: §b/rank user <Spieler> unset group"
@@ -553,15 +593,17 @@ public class RankCommand implements SimpleCommand {
             return;
         }
 
-        boolean ok = perms.setRoleToDefault(uuid, target.getUsername());
+        boolean ok = perms.setRoleToDefault(uuid, storedName);
         if (ok) {
             String defName = perms.getDefaultRoleName();
             src.sendMessage(prefix().append(Component.text(
-                    "§aSpieler §b" + target.getUsername() + " §awurde auf Standard-Gruppe §b" + defName + " §azurückgesetzt."
+                    "§aSpieler §b" + storedName + " §awurde auf Standard-Gruppe §b" + defName + " §azurückgesetzt."
             )));
-            target.sendMessage(prefix().append(Component.text(
-                    "§7Deine Gruppe wurde auf §b" + defName + " §7zurückgesetzt."
-            )));
+            if (targetOrNull != null) {
+                targetOrNull.sendMessage(prefix().append(Component.text(
+                        "§7Deine Gruppe wurde auf §b" + defName + " §7zurückgesetzt."
+                )));
+            }
         } else {
             src.sendMessage(prefix().append(Component.text(
                     "§cKonnte Gruppe nicht zurücksetzen."
@@ -580,6 +622,7 @@ public class RankCommand implements SimpleCommand {
         src.sendMessage(Component.text("§7Verwalte Gruppen, Prefixe und temporäre Ränge."));
         src.sendMessage(Component.text(" "));
         src.sendMessage(Component.text("§8» §b/rank help §7– zeigt alle Befehle"));
+        src.sendMessage(Component.text("§8» §b/rank reload §7– lädt Rollen & Permissions neu"));
         src.sendMessage(Component.text(" "));
         src.sendMessage(Component.text("§8§m────────────────────────────────"));
         src.sendMessage(Component.text(" "));
@@ -591,13 +634,13 @@ public class RankCommand implements SimpleCommand {
         input = input.toLowerCase(Locale.ROOT).trim();
 
         long multiplier;
-        if (input.endsWith("m")) { multiplier = 60_000L; input = input.replace("m", ""); }           // Minuten
-        else if (input.endsWith("h")) { multiplier = 3_600_000L; input = input.replace("h", ""); }   // Stunden
-        else if (input.endsWith("d")) { multiplier = 86_400_000L; input = input.replace("d", ""); }  // Tage
-        else if (input.endsWith("w")) { multiplier = 604_800_000L; input = input.replace("w", ""); } // Wochen
-        else if (input.endsWith("mo")) { multiplier = 2_592_000_000L; input = input.replace("mo", ""); } // Monate (30 Tage)
-        else if (input.endsWith("y")) { multiplier = 31_536_000_000L; input = input.replace("y", ""); }  // Jahre
-        else return null; // kein gültiges Format
+        if (input.endsWith("m")) { multiplier = 60_000L; input = input.replace("m", ""); }
+        else if (input.endsWith("h")) { multiplier = 3_600_000L; input = input.replace("h", ""); }
+        else if (input.endsWith("d")) { multiplier = 86_400_000L; input = input.replace("d", ""); }
+        else if (input.endsWith("w")) { multiplier = 604_800_000L; input = input.replace("w", ""); }
+        else if (input.endsWith("mo")) { multiplier = 2_592_000_000L; input = input.replace("mo", ""); }
+        else if (input.endsWith("y")) { multiplier = 31_536_000_000L; input = input.replace("y", ""); }
+        else return null;
 
         try {
             long num = Long.parseLong(input);
@@ -614,6 +657,7 @@ public class RankCommand implements SimpleCommand {
 
         src.sendMessage(Component.text("§bAllgemein"));
         src.sendMessage(Component.text("§8» §b/rank help §7– diese Hilfe"));
+        src.sendMessage(Component.text("§8» §b/rank reload §7– Rollen & Permissions neu laden"));
         src.sendMessage(Component.text("§8» §b/rank group ... §7– Gruppen verwalten"));
         src.sendMessage(Component.text("§8» §b/rank user ... §7– Spieler-Ränge verwalten (auch temporär)"));
         src.sendMessage(Component.text(" "));
@@ -718,14 +762,13 @@ public class RankCommand implements SimpleCommand {
 
         String[] args = invocation.arguments();
 
-        // /rank <tab>
         if (args.length == 0) {
-            return List.of("help", "group", "user");
+            return List.of("help", "reload", "group", "user");
         }
 
         if (args.length == 1) {
             String first = args[0].toLowerCase(Locale.ROOT);
-            List<String> root = List.of("help", "group", "user");
+            List<String> root = List.of("help", "reload", "group", "user");
             if (first.isEmpty()) return root;
 
             List<String> out = new ArrayList<>();
@@ -737,9 +780,12 @@ public class RankCommand implements SimpleCommand {
 
         String first = args[0].toLowerCase(Locale.ROOT);
 
-        // ---------- group ----------
+        // reload hat keine weiteren Argumente
+        if (first.equals("reload")) {
+            return List.of();
+        }
+
         if (first.equals("group")) {
-            // /rank group <tab>
             if (args.length == 2) {
                 String second = args[1].toLowerCase(Locale.ROOT);
                 List<String> options = new ArrayList<>();
@@ -750,7 +796,6 @@ public class RankCommand implements SimpleCommand {
                 options.add("permissions");
                 options.add("inherit");
                 options.add("set");
-                // zusätzlich Gruppennamen
                 options.addAll(perms.getAllRoleNames());
 
                 if (second.isEmpty()) return options;
@@ -762,7 +807,6 @@ public class RankCommand implements SimpleCommand {
                 return out;
             }
 
-            // /rank group delete|info|permissions <tab>
             if (args.length == 3) {
                 String second = args[1].toLowerCase(Locale.ROOT);
                 String thirdPrefix = args[2].toLowerCase(Locale.ROOT);
@@ -795,7 +839,6 @@ public class RankCommand implements SimpleCommand {
                     return out;
                 }
 
-                // /rank group <name> <tab>
                 List<String> subs = List.of("permissions", "set", "unset");
                 List<String> out = new ArrayList<>();
                 for (String s : subs) {
@@ -804,7 +847,6 @@ public class RankCommand implements SimpleCommand {
                 return out;
             }
 
-            // /rank group inherit <...> Tab-Complete
             if (args.length == 4 && args[1].equalsIgnoreCase("inherit")) {
                 String mode = args[2].toLowerCase(Locale.ROOT);
                 String pfx = args[3].toLowerCase(Locale.ROOT);
@@ -833,7 +875,6 @@ public class RankCommand implements SimpleCommand {
                 }
             }
 
-            // /rank group set prefix|suffix <tab> → Gruppen
             if (args[1].equalsIgnoreCase("set") && args.length == 4) {
                 String type = args[2].toLowerCase(Locale.ROOT);
                 if (type.equals("prefix") || type.equals("suffix")) {
@@ -851,9 +892,7 @@ public class RankCommand implements SimpleCommand {
             return List.of();
         }
 
-        // ---------- user ----------
         if (first.equals("user")) {
-            // /rank user <tab> → Spielernamen
             if (args.length == 2) {
                 String prefix = args[1].toLowerCase(Locale.ROOT);
                 List<String> out = new ArrayList<>();
@@ -866,7 +905,6 @@ public class RankCommand implements SimpleCommand {
                 return out;
             }
 
-            // /rank user <spieler> <tab> → set / unset
             if (args.length == 3) {
                 String third = args[2].toLowerCase(Locale.ROOT);
                 List<String> opts = List.of("set", "unset");
@@ -880,13 +918,11 @@ public class RankCommand implements SimpleCommand {
             String action = args[2].toLowerCase(Locale.ROOT);
 
             if (action.equals("set")) {
-                // /rank user <spieler> set <tab> → group
                 if (args.length == 4) {
                     String pfx = args[3].toLowerCase(Locale.ROOT);
                     if ("group".startsWith(pfx)) return List.of("group");
                     return List.of();
                 }
-                // /rank user <spieler> set group <tab> → Gruppen
                 if (args.length == 5 && "group".equalsIgnoreCase(args[3])) {
                     String pfx = args[4].toLowerCase(Locale.ROOT);
                     List<String> roles = perms.getAllRoleNames();
@@ -898,7 +934,6 @@ public class RankCommand implements SimpleCommand {
                     return out;
                 }
 
-                // 🆕 /rank user <spieler> set group <gruppe> <tab> → Zeitvorschläge
                 if (args.length == 6 && "group".equalsIgnoreCase(args[3])) {
                     String pfx = args[5].toLowerCase(Locale.ROOT);
                     List<String> durations = List.of("30m", "1h", "3h", "12h", "1d", "7d", "1w", "1mo", "1y");
@@ -916,7 +951,6 @@ public class RankCommand implements SimpleCommand {
             }
 
             if (action.equals("unset")) {
-                // /rank user <spieler> unset <tab> → group
                 if (args.length == 4) {
                     String pfx = args[3].toLowerCase(Locale.ROOT);
                     if ("group".startsWith(pfx)) return List.of("group");

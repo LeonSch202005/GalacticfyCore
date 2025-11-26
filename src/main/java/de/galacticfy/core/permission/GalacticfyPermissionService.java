@@ -5,8 +5,10 @@ import com.velocitypowered.api.proxy.Player;
 import de.galacticfy.core.database.DatabaseManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextColor;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.slf4j.Logger;
 
+import javax.management.relation.Role;
 import java.sql.*;
 import java.time.Instant;
 import java.util.*;
@@ -30,18 +32,15 @@ public class GalacticfyPermissionService {
 
     private final String defaultRoleName = "spieler";
 
-    // Cache: Rollen
     private final Map<String, GalacticfyRole> roleByName = new ConcurrentHashMap<>();
     private final Map<Integer, GalacticfyRole> roleById = new ConcurrentHashMap<>();
 
-    // Cache: Role → Permissions (direkt)
     private final Map<Integer, Set<String>> permissionsByRoleId = new ConcurrentHashMap<>();
-
-    // Cache: Role → Parents (Inheritance)
     private final Map<Integer, Set<Integer>> parentsByRoleId = new ConcurrentHashMap<>();
-
-    // Cache: Role → Effective Permissions (inkl. Inheritance)
     private final Map<Integer, Set<String>> effectivePermissionsCache = new ConcurrentHashMap<>();
+
+    private final Map<UUID, CachedUserRole> userRoleCache = new ConcurrentHashMap<>();
+
 
     // Cache: User → Rolle + Expire
     private static class CachedUserRole {
@@ -55,8 +54,6 @@ public class GalacticfyPermissionService {
             this.expiresAtMillis = expiresAtMillis;
         }
     }
-
-    private final Map<UUID, CachedUserRole> userRoleCache = new ConcurrentHashMap<>();
 
     public GalacticfyPermissionService(DatabaseManager db, Logger logger) {
         this.db = db;
@@ -283,7 +280,6 @@ public class GalacticfyPermissionService {
             int updated = ps.executeUpdate();
             if (updated == 0) return false;
 
-            // Rolle im Cache aktualisieren
             GalacticfyRole updatedRole = new GalacticfyRole(
                     role.id,
                     role.name,
@@ -316,7 +312,6 @@ public class GalacticfyPermissionService {
             int updated = ps.executeUpdate();
             if (updated == 0) return false;
 
-            // Rolle im Cache aktualisieren
             GalacticfyRole updatedRole = new GalacticfyRole(
                     role.id,
                     role.name,
@@ -335,7 +330,6 @@ public class GalacticfyPermissionService {
             return false;
         }
     }
-
 
     public List<String> getAllRoleNames() {
         List<String> roles = new ArrayList<>();
@@ -360,7 +354,6 @@ public class GalacticfyPermissionService {
     public GalacticfyRole getRoleFor(UUID uuid) {
         long now = System.currentTimeMillis();
 
-        // Cache
         CachedUserRole cached = userRoleCache.get(uuid);
         if (cached != null) {
             if (cached.expiresAtMillis != null && cached.expiresAtMillis <= now) {
@@ -374,7 +367,6 @@ public class GalacticfyPermissionService {
             }
         }
 
-        // DB
         try (Connection con = db.getConnection();
              PreparedStatement ps = con.prepareStatement(
                      "SELECT u.name, u.role_id, u.expires_at, r.* " +
@@ -397,7 +389,7 @@ public class GalacticfyPermissionService {
                         return getRoleByName(defaultRoleName);
                     }
 
-                    cacheRole(role); // falls noch nicht
+                    cacheRole(role);
                     userRoleCache.put(uuid, new CachedUserRole(role, name, expiresAtMillis));
                     return role;
                 }
@@ -406,7 +398,6 @@ public class GalacticfyPermissionService {
             logger.error("Fehler beim Laden der User-Rolle", e);
         }
 
-        // Fallback
         GalacticfyRole def = getRoleByName(defaultRoleName);
         if (def == null) {
             ensureDefaultRole();
@@ -491,6 +482,35 @@ public class GalacticfyPermissionService {
     public boolean setRoleForDuration(UUID uuid, String name, String roleName, long durationMs) {
         long expiresAtMillis = System.currentTimeMillis() + durationMs;
         return setRoleFor(uuid, name, roleName, expiresAtMillis);
+    }
+
+    /**
+     * Sucht die UUID eines Spielers anhand des zuletzt gespeicherten Namens.
+     * Wird für Offline-Support von /rank user benutzt.
+     */
+    public UUID findUuidByName(String name) {
+        if (name == null || name.isBlank()) return null;
+        String key = name.toLowerCase(Locale.ROOT);
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "SELECT uuid, name FROM gf_user_roles WHERE LOWER(name) = ? LIMIT 1"
+             )) {
+            ps.setString(1, key);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String uuidStr = rs.getString("uuid");
+                    try {
+                        return UUID.fromString(uuidStr);
+                    } catch (IllegalArgumentException e) {
+                        logger.warn("Ungültige UUID '{}' in gf_user_roles für name={}", uuidStr, name);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            logger.error("Fehler beim Suchen der UUID für Name {}", name, e);
+        }
+        return null;
     }
 
     // ---------------------------------------------------
@@ -578,28 +598,23 @@ public class GalacticfyPermissionService {
             return false;
         }
     }
+
     // ---------------------------------------------------
-//  Zentrale Permission-Abfrage für DEIN Plugin
-//  - Berücksichtigt Rank-System (inkl. "*", foo.*)
-//  - Fällt zurück auf normale Velocity-/LuckPerms-Permission
-// ---------------------------------------------------
+    //  Zentrale Permission-Abfrage für DEIN Plugin
+    // ---------------------------------------------------
     public boolean hasPluginPermission(CommandSource source, String permission) {
         if (permission == null || permission.isBlank()) return true;
 
-        // Konsole immer erlauben
         if (!(source instanceof Player player)) {
             return true;
         }
 
-        // 1) Eigene Ränge (inkl. "*", Inherit, etc.)
         if (hasRankPermission(player, permission)) {
             return true;
         }
 
-        // 2) Fallback: andere Permission-Plugins (LuckPerms, OP, etc.)
         return player.hasPermission(permission);
     }
-
 
     public List<String> getPermissionsOfRole(String roleName) {
         GalacticfyRole role = getRoleByName(roleName);
@@ -643,7 +658,7 @@ public class GalacticfyPermissionService {
         GalacticfyRole parent = getRoleByName(parentRoleName);
         if (role == null || parent == null) return false;
 
-        if (role.id == parent.id) return false; // keine Self-Loop
+        if (role.id == parent.id) return false;
 
         try (Connection con = db.getConnection();
              PreparedStatement ps = con.prepareStatement(
@@ -715,19 +730,16 @@ public class GalacticfyPermissionService {
         if (role == null) return Set.of();
 
         if (!visited.add(role.id)) {
-            // Zyklus in Inheritance → abbrechen
             return Set.of();
         }
 
         Set<String> result = new HashSet<>();
 
-        // eigene Permissions
         Set<String> own = permissionsByRoleId.get(role.id);
         if (own != null) {
             result.addAll(own);
         }
 
-        // Eltern
         Set<Integer> parents = parentsByRoleId.get(role.id);
         if (parents != null) {
             for (int parentId : parents) {
@@ -752,7 +764,6 @@ public class GalacticfyPermissionService {
         return unmodifiable;
     }
 
-    /** Checkt eine Permission nur über das RANK-System (inkl. *, foo.* und Inheritance). */
     public boolean hasRankPermission(Player player, String permission) {
         if (permission == null || permission.isBlank()) return true;
 
@@ -768,13 +779,10 @@ public class GalacticfyPermissionService {
             if (raw == null || raw.isBlank()) continue;
             String p = raw.toLowerCase(Locale.ROOT);
 
-            // Full-OP
             if (p.equals("*")) return true;
 
-            // Exact match
             if (p.equals(node)) return true;
 
-            // Wildcard foo.*
             if (p.endsWith(".*")) {
                 String prefix = p.substring(0, p.length() - 2);
                 if (!prefix.isEmpty() && node.startsWith(prefix)) {
@@ -784,6 +792,38 @@ public class GalacticfyPermissionService {
         }
         return false;
     }
+    /**
+     * Lädt Rollen, Permissions, Inheritance und den User-Cache komplett neu.
+     * Wird z.B. von /rank reload aufgerufen.
+     */
+    // ---------------------------------------------------
+//  Reload für /rank reload
+// ---------------------------------------------------
+    public void reloadAllCaches() {
+        logger.info("GalacticfyPermissionService: Starte /rank reload ...");
+
+        // alle Caches leeren
+        roleByName.clear();
+        roleById.clear();
+        permissionsByRoleId.clear();
+        parentsByRoleId.clear();
+        effectivePermissionsCache.clear();
+        userRoleCache.clear();
+
+        // Default-Rolle sichern
+        ensureDefaultRole();
+
+        // alles neu aus der DB laden
+        reloadAllRoles();            // lädt gf_roles in roleByName/roleById
+        reloadAllRolePermissions();  // lädt gf_role_permissions
+        reloadAllInheritance();      // lädt gf_role_inherits
+
+        logger.info("GalacticfyPermissionService: Reload abgeschlossen.");
+    }
+
+
+
+
 
     // ---------------------------------------------------
     //  High-Level Helpers (Staff, Maintenance, Display)
@@ -799,32 +839,59 @@ public class GalacticfyPermissionService {
         return role != null && role.maintenanceBypass;
     }
 
-
     public Component getDisplayName(Player player) {
         GalacticfyRole role = getRoleFor(player.getUniqueId());
         String name = player.getUsername();
 
-        String prefix = (role != null && role.prefix != null) ? role.prefix : "";
-        String suffix = (role != null && role.suffix != null) ? role.suffix : "";
+        String prefixRaw = (role != null && role.prefix != null) ? role.prefix : "";
+        String suffixRaw = (role != null && role.suffix != null) ? role.suffix : "";
         String colorHex = (role != null && role.colorHex != null) ? role.colorHex : "FFFFFF";
 
-        TextColor color;
+        // & → § für Legacy-Farbcodes
+        String prefixLegacy = prefixRaw.replace('&', '§');
+        String suffixLegacy = suffixRaw.replace('&', '§');
+
+        TextColor nameColor;
         try {
-            color = TextColor.fromHexString("#" + colorHex);
+            nameColor = TextColor.fromHexString("#" + colorHex);
         } catch (Exception e) {
-            color = TextColor.fromHexString("#FFFFFF");
+            nameColor = TextColor.color(0xFFFFFF);
         }
 
-        Component base = Component.text(name).color(color);
+        // Name in Rollenfarbe
+        Component nameComp = Component.text(name).color(nameColor);
 
-        if (!suffix.isEmpty()) {
-            base = base.append(Component.space()).append(Component.text(suffix));
-        }
+        // Prefix (mit Farben aus &-Codes)
+        Component prefixComp = prefixLegacy.isBlank()
+                ? Component.empty()
+                : LegacyComponentSerializer.legacySection().deserialize(prefixLegacy + " ");
 
-        if (!prefix.isEmpty()) {
-            return Component.text(prefix).append(Component.space()).append(base);
-        }
-        return base;
+        // Suffix (optional)
+        Component suffixComp = suffixLegacy.isBlank()
+                ? Component.empty()
+                : Component.text(" ").append(
+                LegacyComponentSerializer.legacySection().deserialize(suffixLegacy)
+        );
+
+        return Component.empty()
+                .append(prefixComp)
+                .append(nameComp)
+                .append(suffixComp);
     }
+
+    public Component getPrefixComponent(Player player) {
+        // du hast diese Methode bereits
+        GalacticfyRole role = getRoleFor(player.getUniqueId());
+
+        if (role == null || role.prefix == null || role.prefix.isBlank()) {
+            return Component.empty();
+        }
+
+        // & → § konvertieren, dann als Legacy-Text parsen
+        String legacy = role.prefix.replace('&', '§');
+        return LegacyComponentSerializer.legacySection().deserialize(legacy);
+    }
+
+
 
 }

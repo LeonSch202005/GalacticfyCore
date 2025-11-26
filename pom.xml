@@ -62,14 +62,7 @@
                 </configuration>
             </plugin>
 
-            <!-- Normales Jar -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>3.3.0</version>
-            </plugin>
-
-            <!-- Shade Plugin -->
+            <!-- Shade Plugin (ohne Relocations, damit der MariaDB-Driver nicht kaputtgeht) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -82,19 +75,6 @@
                         </goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
-
-                            <relocations>
-                                <relocation>
-                                    <pattern>com.zaxxer.hikari</pattern>
-                                    <shadedPattern>de.galacticfy.core.libs.hikari</shadedPattern>
-                                </relocation>
-
-                                <relocation>
-                                    <pattern>org.mariadb.jdbc</pattern>
-                                    <shadedPattern>de.galacticfy.core.libs.mariadb</shadedPattern>
-                                </relocation>
-                            </relocations>
-
                         </configuration>
                     </execution>
                 </executions>

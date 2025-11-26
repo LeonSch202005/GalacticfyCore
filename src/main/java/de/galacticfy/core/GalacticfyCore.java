@@ -11,9 +11,7 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import de.galacticfy.core.command.*;
 import de.galacticfy.core.database.DatabaseManager;
 import de.galacticfy.core.database.DatabaseMigrationService;
-import de.galacticfy.core.listener.ConnectionProtectionListener;
-import de.galacticfy.core.listener.MaintenanceListener;
-import de.galacticfy.core.listener.PermissionsSetupListener;
+import de.galacticfy.core.listener.*;
 import de.galacticfy.core.motd.GalacticfyMotdProvider;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
 import de.galacticfy.core.service.MaintenanceService;
@@ -61,7 +59,7 @@ public class GalacticfyCore {
         // Eigenes Permission- / Rollen-System
         this.permissionService = new GalacticfyPermissionService(databaseManager, logger);
 
-        // Discord-Webhook
+        // Discord-Webhook (TODO: später aus Config lesen)
         String webhookUrl = "DEIN_WEBHOOK_HIER";
         this.discordNotifier = new DiscordWebhookNotifier(logger, webhookUrl);
 
@@ -87,11 +85,9 @@ public class GalacticfyCore {
                 .build();
         commandManager.register(eventMeta, new EventCommand(teleportService, maintenanceService, permissionService));
 
-
         CommandMeta sendMeta = commandManager.metaBuilder("send")
                 .build();
         commandManager.register(sendMeta, new SendCommand(proxy, teleportService, permissionService));
-
 
         // Maintenance (EN / DE Layout)
         CommandMeta maintenanceMeta = commandManager.metaBuilder("maintenance").build();
@@ -111,11 +107,18 @@ public class GalacticfyCore {
         commandManager.register(rankMeta, new RankCommand(permissionService, proxy));
 
         // Listener
-        proxy.getEventManager().register(this, new ConnectionProtectionListener(logger, proxy, maintenanceService));
-        proxy.getEventManager().register(this, new GalacticfyMotdProvider(maintenanceService));
-        proxy.getEventManager().register(this, new MaintenanceListener(maintenanceService, logger, permissionService));
-        proxy.getEventManager().register(this, new PermissionsSetupListener(permissionService, logger));
+        proxy.getEventManager().register(this,
+                new ConnectionProtectionListener(logger, proxy, maintenanceService));
+        proxy.getEventManager().register(this,
+                new GalacticfyMotdProvider(maintenanceService));
+        proxy.getEventManager().register(this,
+                new MaintenanceListener(maintenanceService, logger, permissionService));
+        proxy.getEventManager().register(this,
+                new PermissionsSetupListener(permissionService, logger));
 
+        // Tablist (Header/Footer + Prefix aus Rank-System)
+        proxy.getEventManager().register(this,
+                new TablistPrefixListener(proxy, permissionService, logger));
 
         logger.info("GalacticfyCore: Commands & Listener registriert.");
     }
@@ -125,7 +128,11 @@ public class GalacticfyCore {
         logger.info("GalacticfyCore fährt herunter, schließe Ressourcen...");
 
         if (maintenanceService != null) {
-            maintenanceService.shutdown(); // falls du in MaintenanceService eine shutdown()-Methode hast
+            maintenanceService.shutdown();
+        }
+
+        if (discordNotifier != null) {
+            discordNotifier.shutdown();
         }
 
         if (databaseManager != null) {

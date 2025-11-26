@@ -8,10 +8,10 @@ import net.kyori.adventure.title.Title;
 import org.slf4j.Logger;
 
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ServerTeleportService {
 
@@ -20,7 +20,9 @@ public class ServerTeleportService {
 
     // Cooldown in Millisekunden (z.B. 3 Sekunden)
     private final long teleportCooldownMs = 3000L;
-    private final Map<UUID, Long> lastTeleport = new HashMap<>();
+
+    // Thread-sicher, weil von mehreren Threads genutzt werden kann
+    private final Map<UUID, Long> lastTeleport = new ConcurrentHashMap<>();
 
     public ServerTeleportService(ProxyServer proxy, Logger logger) {
         this.proxy = proxy;

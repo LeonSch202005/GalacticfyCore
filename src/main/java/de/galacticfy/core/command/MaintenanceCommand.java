@@ -645,14 +645,21 @@ public class MaintenanceCommand implements SimpleCommand {
         );
 
         for (Player player : proxy.getAllPlayers()) {
-            // Bypass über Rank-System / Permissions
             if (isBypassedForMaintenance(player)) {
                 continue;
             }
-            // Spieler-Whitelist
             if (maintenanceService.isPlayerWhitelisted(player.getUsername())) {
                 continue;
             }
+
+            // Gruppen-Whitelist
+            if (permissionService != null) {
+                var role = permissionService.getRoleFor(player.getUniqueId());
+                if (role != null && maintenanceService.isGroupWhitelisted(role.name)) {
+                    continue;
+                }
+            }
+
             player.disconnect(kickMessage);
         }
     }
@@ -701,6 +708,14 @@ public class MaintenanceCommand implements SimpleCommand {
                     continue;
                 }
 
+                // Gruppen-Whitelist
+                if (permissionService != null) {
+                    var role = permissionService.getRoleFor(player.getUniqueId());
+                    if (role != null && maintenanceService.isGroupWhitelisted(role.name)) {
+                        continue;
+                    }
+                }
+
                 player.getCurrentServer().ifPresent(conn -> {
                     String currentName = conn.getServerInfo().getName();
                     if (currentName.equalsIgnoreCase(backendLower)) {
@@ -718,6 +733,14 @@ public class MaintenanceCommand implements SimpleCommand {
             if (isBypassedForMaintenance(player)
                     || maintenanceService.isPlayerWhitelisted(player.getUsername())) {
                 continue;
+            }
+
+            // Gruppen-Whitelist
+            if (permissionService != null) {
+                var role = permissionService.getRoleFor(player.getUniqueId());
+                if (role != null && maintenanceService.isGroupWhitelisted(role.name)) {
+                    continue;
+                }
             }
 
             player.getCurrentServer().ifPresent(conn -> {
