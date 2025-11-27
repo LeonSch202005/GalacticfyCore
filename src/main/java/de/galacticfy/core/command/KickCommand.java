@@ -5,6 +5,7 @@ import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
+import de.galacticfy.core.punish.PunishDesign;
 import de.galacticfy.core.punish.ReasonPresets;
 import de.galacticfy.core.punish.ReasonPresets.Preset;
 import de.galacticfy.core.service.PunishmentService;
@@ -13,10 +14,7 @@ import de.galacticfy.core.util.DiscordWebhookNotifier;
 import net.kyori.adventure.text.Component;
 
 import java.net.InetSocketAddress;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Locale;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class KickCommand implements SimpleCommand {
@@ -72,10 +70,6 @@ public class KickCommand implements SimpleCommand {
         String reason;
         String extra = null;
 
-        // ============================================
-        // Grund + Presets
-        // ============================================
-
         if (args.length == 1) {
             reason = "Kein Grund angegeben";
         } else {
@@ -113,43 +107,43 @@ public class KickCommand implements SimpleCommand {
 
         String staffName = (src instanceof Player p) ? p.getUsername() : "Konsole";
 
-        // ============================================
-        // Kick in DB speichern
-        // ============================================
-
         Punishment p = punishmentService.logKick(uuid, storedName, ip, reason, staffName);
 
-        // Kick-Nachricht
         Component msg = Component.text(
-                "§cDu wurdest gekickt.\n" +
-                        "§7Grund: §e" + reason + "\n" +
+                "§c§lGalacticfy §8» §cDu wurdest gekickt.\n" +
+                        "§7Grund: §f" + reason + "\n" +
                         "§7Von: §b" + staffName
         );
 
         target.disconnect(msg);
 
-        // Staff-Feedback
         src.sendMessage(Component.text(" "));
-        src.sendMessage(prefix().append(Component.text("§a" + storedName + " §awurde gekickt.")));
-        src.sendMessage(Component.text("§7Grund: §f" + reason));
-        src.sendMessage(Component.text("§7Von: §f" + staffName));
+        src.sendMessage(Component.text(PunishDesign.BIG_HEADER_KICK));
+        src.sendMessage(Component.text(" "));
+        src.sendMessage(Component.text("§7Spieler: §f" + storedName));
+        src.sendMessage(Component.text("§7Grund:  §f" + reason));
+        src.sendMessage(Component.text("§7Von:    §f" + staffName));
+        src.sendMessage(Component.text(PunishDesign.LINE));
         src.sendMessage(Component.text(" "));
 
-        // Discord Webhook
         if (webhook != null && webhook.isEnabled() && p != null) {
             webhook.sendKick(p);
         }
     }
 
-    // ============================================
-    // TAB COMPLETE
-    // ============================================
+    @Override
+    public boolean hasPermission(Invocation invocation) {
+        return hasKickPermission(invocation.source());
+    }
 
     @Override
     public List<String> suggest(Invocation invocation) {
+        if (!hasKickPermission(invocation.source())) {
+            return List.of();
+        }
+
         String[] args = invocation.arguments();
 
-        // /kick <TAB>  → alle Spieler
         if (args.length == 0) {
             return proxy.getAllPlayers().stream()
                     .map(Player::getUsername)
@@ -157,7 +151,6 @@ public class KickCommand implements SimpleCommand {
                     .collect(Collectors.toList());
         }
 
-        // /kick <Spieler> [TAB] → Spieler nach Prefix filtern
         if (args.length == 1) {
             String prefix = args[0].toLowerCase(Locale.ROOT);
             return proxy.getAllPlayers().stream()
@@ -167,15 +160,11 @@ public class KickCommand implements SimpleCommand {
                     .collect(Collectors.toList());
         }
 
-        // /kick <Spieler> <Grund/Preset> [TAB]
         if (args.length == 2) {
             String prefix = args[1].toLowerCase(Locale.ROOT);
-            // zeigt alle Presets, gefiltert nach Prefix (oder alle, wenn prefix leer)
             return ReasonPresets.tabComplete(prefix);
         }
 
-        // ab drittem Argument kein Tab nötig
         return List.of();
     }
-
 }

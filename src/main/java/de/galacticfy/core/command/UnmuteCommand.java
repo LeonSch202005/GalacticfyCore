@@ -3,13 +3,13 @@ package de.galacticfy.core.command;
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
+import de.galacticfy.core.punish.PunishDesign;
 import de.galacticfy.core.service.PunishmentService;
+import de.galacticfy.core.service.PunishmentService.Punishment;
 import net.kyori.adventure.text.Component;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
 public class UnmuteCommand implements SimpleCommand {
 
@@ -29,17 +29,18 @@ public class UnmuteCommand implements SimpleCommand {
     }
 
     private boolean hasUnmutePermission(CommandSource src) {
-        if (src instanceof com.velocitypowered.api.proxy.Player player) {
+        if (src instanceof com.velocitypowered.api.proxy.Player p) {
             if (perms != null) {
-                return perms.hasPluginPermission(player, PERM_UNMUTE);
+                return perms.hasPluginPermission(p, PERM_UNMUTE);
             }
-            return player.hasPermission(PERM_UNMUTE);
+            return p.hasPermission(PERM_UNMUTE);
         }
         return true;
     }
 
     @Override
     public void execute(Invocation invocation) {
+
         CommandSource src = invocation.source();
         String[] args = invocation.arguments();
 
@@ -55,45 +56,55 @@ public class UnmuteCommand implements SimpleCommand {
             return;
         }
 
-        String name = args[0];
+        String targetName = args[0];
+        String staffName = (src instanceof com.velocitypowered.api.proxy.Player p)
+                ? p.getUsername()
+                : "Konsole";
 
-        boolean ok = punishmentService.unmuteByName(name);
-        if (!ok) {
+        // Du brauchst in PunishmentService z.B.:
+        // Punishment unmuteByName(String name, String staffName)
+        Punishment result = punishmentService.unmuteByName(targetName, staffName);
+
+        if (result == null) {
             src.sendMessage(prefix().append(Component.text(
-                    "§cKein aktiver Mute für §e" + name + " §cgefunden."
+                    "§cEs wurde kein aktiver Mute für §e" + targetName + " §cgefunden."
             )));
-        } else {
-            src.sendMessage(prefix().append(Component.text(
-                    "§aMute für §e" + name + " §awurde aufgehoben."
-            )));
+            return;
         }
+
+        src.sendMessage(Component.text(" "));
+        src.sendMessage(Component.text(PunishDesign.BIG_HEADER_UNMUTE));
+        src.sendMessage(Component.text(" "));
+        src.sendMessage(Component.text("§7Spieler: §f" + targetName));
+        src.sendMessage(Component.text("§7Von:     §f" + staffName));
+        src.sendMessage(Component.text(PunishDesign.LINE));
+        src.sendMessage(Component.text(" "));
+    }
+
+    @Override
+    public boolean hasPermission(Invocation invocation) {
+        return hasUnmutePermission(invocation.source());
     }
 
     @Override
     public List<String> suggest(Invocation invocation) {
-        CommandSource src = invocation.source();
-        String[] args = invocation.arguments();
-
-        if (!hasUnmutePermission(src)) {
+        if (!hasUnmutePermission(invocation.source())) {
             return List.of();
         }
 
-        // /unmute <Spieler>
+        String[] args = invocation.arguments();
+
         if (args.length == 0) {
-            return punishmentService.getActiveMutedNames().stream()
-                    .filter(Objects::nonNull)
-                    .sorted(String.CASE_INSENSITIVE_ORDER)
-                    .collect(Collectors.toList());
+            return punishmentService.getAllPunishedNames();
         }
 
         if (args.length == 1) {
             String prefix = args[0].toLowerCase(Locale.ROOT);
-            return punishmentService.getActiveMutedNames().stream()
-                    .filter(Objects::nonNull)
-                    .filter(n -> prefix.isEmpty()
-                            || n.toLowerCase(Locale.ROOT).startsWith(prefix))
+
+            return punishmentService.getAllPunishedNames().stream()
+                    .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(prefix))
                     .sorted(String.CASE_INSENSITIVE_ORDER)
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         return List.of();

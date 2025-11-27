@@ -5,6 +5,7 @@ import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
+import de.galacticfy.core.punish.PunishDesign;
 import de.galacticfy.core.punish.ReasonPresets;
 import de.galacticfy.core.punish.ReasonPresets.Preset;
 import de.galacticfy.core.service.PunishmentService;
@@ -114,11 +115,9 @@ public class MuteCommand implements SimpleCommand {
             uuid = target.getUniqueId();
             storedName = target.getUsername();
 
-            if (target.getRemoteAddress() instanceof InetSocketAddress) {
-                InetSocketAddress isa = (InetSocketAddress) target.getRemoteAddress();
-                if (isa.getAddress() != null) {
-                    ip = isa.getAddress().getHostAddress();
-                }
+            Object remote = target.getRemoteAddress();
+            if (remote instanceof InetSocketAddress isa && isa.getAddress() != null) {
+                ip = isa.getAddress().getHostAddress();
             }
         }
 
@@ -135,24 +134,30 @@ public class MuteCommand implements SimpleCommand {
                 : "§e" + punishmentService.formatRemaining(p);
 
         src.sendMessage(Component.text(" "));
-        src.sendMessage(prefix().append(Component.text("§aSpieler §e" + storedName + " §awurde gemutet.")));
-        src.sendMessage(Component.text("§8§m────────────────────────────────"));
-        src.sendMessage(Component.text("§7Grund: §f" + reason));
-        src.sendMessage(Component.text("§7Dauer: " + durText));
+        src.sendMessage(Component.text(PunishDesign.BIG_HEADER_MUTE));
+        src.sendMessage(Component.text(" "));
+        src.sendMessage(Component.text("§7Spieler: §f" + storedName));
+        src.sendMessage(Component.text("§7Grund:  §f" + reason));
+        src.sendMessage(Component.text("§7Dauer:  " + durText));
         if (presetKeyUsed != null) {
             src.sendMessage(Component.text("§7Preset: §b" + presetKeyUsed));
         }
-        src.sendMessage(Component.text("§7Von: §f" + staffName));
-        src.sendMessage(Component.text("§8§m────────────────────────────────"));
+        src.sendMessage(Component.text("§7Von:    §f" + staffName));
+        src.sendMessage(Component.text(PunishDesign.LINE));
         src.sendMessage(Component.text(" "));
 
         if (target != null) {
-            String remaining = punishmentService.formatRemaining(p);
-            target.sendMessage(prefix().append(Component.text(
-                    "§cDu wurdest gemutet.\n" +
-                            "§7Grund: §e" + reason + "\n" +
-                            "§7Dauer: §e" + remaining
-            )));
+            String remaining = (p.expiresAt == null)
+                    ? "§cPermanent"
+                    : "§e" + punishmentService.formatRemaining(p);
+
+            target.sendMessage(Component.text(
+                    "§c§lGalacticfy §8» §cDu wurdest gemutet.\n" +
+                            "§7Grund: §f" + reason + "\n" +
+                            "§7Dauer: " + remaining + "\n" +
+                            " \n" +
+                            "§7Du kannst weiterhin §bCommands §7nutzen, aber nicht schreiben."
+            ));
         }
 
         if (webhook != null && webhook.isEnabled()) {
@@ -161,10 +166,18 @@ public class MuteCommand implements SimpleCommand {
     }
 
     @Override
+    public boolean hasPermission(Invocation invocation) {
+        return hasMutePermission(invocation.source());
+    }
+
+    @Override
     public List<String> suggest(Invocation invocation) {
+        if (!hasMutePermission(invocation.source())) {
+            return List.of();
+        }
+
         String[] args = invocation.arguments();
 
-        // /mute <Spieler>
         if (args.length == 0) {
             return proxy.getAllPlayers().stream()
                     .map(Player::getUsername)
@@ -182,13 +195,11 @@ public class MuteCommand implements SimpleCommand {
                     .collect(Collectors.toList());
         }
 
-        // /mute <Spieler> <Dauer|Preset>
         if (args.length == 2) {
             String prefix = args[1].toLowerCase(Locale.ROOT);
 
             List<String> base = Arrays.asList(
-                    "10m", "30m", "1h", "6h", "1d",
-                    "7d", "30d", "1mo", "1y", "perm"
+                    "10m", "30m", "1h", "6h", "1d", "7d", "30d", "1mo", "1y", "perm"
             );
 
             List<String> presets = ReasonPresets.allKeys();

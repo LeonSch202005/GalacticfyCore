@@ -119,9 +119,15 @@ public class HistoryCommand implements SimpleCommand {
                 } else if (p.type == PunishmentType.MUTE) {
                     icon = "🔇";
                     color = "§6";
-                } else {
+                } else if (p.type == PunishmentType.KICK) {
                     icon = "👢";
                     color = "§e";
+                } else if (p.type == PunishmentType.WARN) {
+                    icon = "⚠";
+                    color = "§e";
+                } else {
+                    icon = "❔";
+                    color = "§7";
                 }
 
                 String date = "-";
@@ -152,20 +158,23 @@ public class HistoryCommand implements SimpleCommand {
     }
 
     @Override
+    public boolean hasPermission(Invocation invocation) {
+        return hasHistoryPermission(invocation.source());
+    }
+
+    @Override
     public List<String> suggest(Invocation invocation) {
         CommandSource src = invocation.source();
         String[] args = invocation.arguments();
 
         if (!hasHistoryPermission(src)) return List.of();
 
-        // /history  -> direkt alle Namen aus DB
         if (args.length == 0) {
             return punishmentService.getAllPunishedNames().stream()
                     .sorted(String.CASE_INSENSITIVE_ORDER)
                     .collect(Collectors.toList());
         }
 
-        // /history <Name>
         if (args.length == 1) {
             String prefix = args[0].toLowerCase(Locale.ROOT);
             return punishmentService.getAllPunishedNames().stream()
@@ -175,7 +184,6 @@ public class HistoryCommand implements SimpleCommand {
                     .collect(Collectors.toList());
         }
 
-        // /history <Name> <Seite>
         if (args.length == 2) {
             return List.of("1", "2", "3", "4", "5");
         }

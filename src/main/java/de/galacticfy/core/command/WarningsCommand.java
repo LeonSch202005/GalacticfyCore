@@ -10,6 +10,7 @@ import de.galacticfy.core.service.PunishmentService.Punishment;
 import de.galacticfy.core.service.PunishmentService.PunishmentType;
 import net.kyori.adventure.text.Component;
 
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -19,12 +20,12 @@ public class WarningsCommand implements SimpleCommand {
 
     private static final String PERM_WARNINGS = "galacticfy.punish.warnings";
 
+    private static final DateTimeFormatter DATE_FORMAT =
+            DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+
     private final ProxyServer proxy;
     private final GalacticfyPermissionService perms;
     private final PunishmentService punishmentService;
-
-    private static final DateTimeFormatter DATE_FORMAT =
-            DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
 
     public WarningsCommand(ProxyServer proxy,
                            GalacticfyPermissionService perms,
@@ -50,6 +51,7 @@ public class WarningsCommand implements SimpleCommand {
 
     @Override
     public void execute(Invocation invocation) {
+
         CommandSource src = invocation.source();
         String[] args = invocation.arguments();
 
@@ -66,38 +68,39 @@ public class WarningsCommand implements SimpleCommand {
         }
 
         String targetName = args[0];
-        Player online = proxy.getPlayer(targetName).orElse(null);
-        UUID uuid = online != null ? online.getUniqueId() : null;
 
-        List<Punishment> history = punishmentService.getHistory(uuid, targetName, 100);
+        UUID uuid = proxy.getPlayer(targetName)
+                .map(Player::getUniqueId)
+                .orElse(null);
 
-        List<Punishment> warns = history.stream()
+        // Du brauchst in PunishmentService:
+        // List<Punishment> getWarns(UUID uuid, String name, int limit)
+        List<Punishment> warns = punishmentService.getWarns(uuid, targetName, 100);
+
+        warns = warns.stream()
                 .filter(p -> p.type == PunishmentType.WARN)
-                .sorted(Comparator.comparing((Punishment p) -> p.createdAt).reversed())
+                .sorted(Comparator.comparing(p -> p.createdAt))
                 .collect(Collectors.toList());
 
         src.sendMessage(Component.text(" "));
-        src.sendMessage(prefix().append(Component.text("§bWarnungen für §f" + targetName)));
+        src.sendMessage(prefix().append(Component.text("§bWarns für §f" + targetName)));
         src.sendMessage(Component.text("§8§m────────────────────────────────"));
 
         if (warns.isEmpty()) {
-            src.sendMessage(Component.text("§7Keine Verwarnungen gefunden."));
+            src.sendMessage(Component.text("§7Keine Warns vorhanden."));
         } else {
-            int index = 1;
+            int i = 1;
             for (Punishment p : warns) {
-
-                String date = "-";
-                if (p.createdAt != null) {
-                    date = DATE_FORMAT.format(p.createdAt.atZone(ZoneId.systemDefault()));
-                }
+                String date = p.createdAt != null
+                        ? DATE_FORMAT.format(LocalDateTime.ofInstant(p.createdAt, ZoneId.systemDefault()))
+                        : "-";
 
                 src.sendMessage(Component.text(
-                        "§e#" + index + " §7am §f" + date +
-                                " §8| §7von §f" + p.staff +
-                                (p.active ? " §8| §aAKTIV" : " §8| §7inaktiv") +
-                                "\n    §7Grund: §f" + p.reason
+                        "§8#§e" + i + " §7am §f" + date +
+                                " §8| §7Von: §f" + p.staff +
+                                "\n   §7Grund: §f" + p.reason
                 ));
-                index++;
+                i++;
             }
         }
 
@@ -106,27 +109,35 @@ public class WarningsCommand implements SimpleCommand {
     }
 
     @Override
-    public List<String> suggest(Invocation invocation) {
-        CommandSource src = invocation.source();
-        String[] args = invocation.arguments();
+    public boolean hasPermission(Invocation invocation) {
+        return hasWarningsPermission(invocation.source());
+    }
 
-        if (!hasWarningsPermission(src)) {
+    @Override
+    public List<String> suggest(Invocation invocation) {
+        if (!hasWarningsPermission(invocation.source())) {
             return List.of();
         }
 
-        // /warnings <Spieler>  (auch ohne Buchstabe)
-        if (args.length == 0 || args.length == 1) {
-            String prefix = args.length == 0 ? "" : args[0].toLowerCase(Locale.ROOT);
+        String[] args = invocation.arguments();
 
-            Set<String> result = new LinkedHashSet<>();
-            result.addAll(punishmentService.findKnownNames(prefix, 30));
-            proxy.getAllPlayers().forEach(p -> {
-                String n = p.getUsername();
-                if (n.toLowerCase(Locale.ROOT).startsWith(prefix)) {
-                    result.add(n);
-                }
-            });
-            return new ArrayList<>(result);
+        if (args.length == 0) {
+            Set<String> names = new LinkedHashSet<>();
+            names.addAll(punishmentService.getAllPunishedNames());
+            proxy.getAllPlayers().forEach(p -> names.add(p.getUsername()));
+            return names.stream().sorted(String.CASE_INSENSITIVE_ORDER).toList();
+        }
+
+        if (args.length == 1) {
+            String prefix = args[0].toLowerCase(Locale.ROOT);
+            Set<String> names = new LinkedHashSet<>();
+            names.addAll(punishmentService.getAllPunishedNames());
+            proxy.getAllPlayers().forEach(p -> names.add(p.getUsername()));
+
+            return names.stream()
+                    .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(prefix))
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .toList();
         }
 
         return List.of();

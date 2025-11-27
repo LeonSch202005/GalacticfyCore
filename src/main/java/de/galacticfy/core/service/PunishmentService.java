@@ -21,7 +21,7 @@ public class PunishmentService {
         IP_BAN,
         MUTE,
         KICK,
-        WARN              // <— neu
+        WARN
     }
 
     public static class Punishment {
@@ -101,6 +101,7 @@ public class PunishmentService {
         }
     }
 
+    /** Alte Variante (nur boolean), bleibt für Kompatibilität drin. */
     public boolean unbanByName(String name) {
         if (name == null || name.isBlank()) return false;
         String key = name.toLowerCase(Locale.ROOT);
@@ -116,6 +117,100 @@ public class PunishmentService {
         } catch (SQLException e) {
             logger.error("Fehler beim Unbannen von Name {}", name, e);
             return false;
+        }
+    }
+
+    // Neue Variante für /unban-Command: gibt das letzte Ban-Objekt zurück
+    public Punishment unbanByName(String name, String staffName) {
+        if (name == null || name.isBlank()) return null;
+
+        String key = name.toLowerCase(Locale.ROOT);
+
+        try (Connection con = db.getConnection()) {
+
+            // 1) Letzten aktiven BAN holen
+            Punishment lastBan = null;
+            String selectSql = """
+                    SELECT *
+                    FROM gf_punishments
+                    WHERE LOWER(name) = ? AND type = 'BAN' AND active = 1
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 1
+                    """;
+
+            try (PreparedStatement psSel = con.prepareStatement(selectSql)) {
+                psSel.setString(1, key);
+                try (ResultSet rs = psSel.executeQuery()) {
+                    if (rs.next()) {
+                        lastBan = mapPunishment(rs);
+                    }
+                }
+            }
+
+            if (lastBan == null) {
+                return null;
+            }
+
+            // 2) Alle aktiven BANs für diesen Namen deaktivieren
+            try (PreparedStatement psUpd = con.prepareStatement(
+                    "UPDATE gf_punishments SET active = 0 " +
+                            "WHERE LOWER(name) = ? AND type = 'BAN' AND active = 1"
+            )) {
+                psUpd.setString(1, key);
+                psUpd.executeUpdate();
+            }
+
+            return lastBan;
+
+        } catch (SQLException e) {
+            logger.error("Fehler bei unbanByName(name={}, staff={})", name, staffName, e);
+            return null;
+        }
+    }
+
+    // IP-Unban für /unban <IP>
+    public Punishment unbanByIp(String ip, String staffName) {
+        if (ip == null || ip.isBlank()) return null;
+
+        try (Connection con = db.getConnection()) {
+
+            // 1) Letzten aktiven IP_BAN holen
+            Punishment last = null;
+            String selectSql = """
+                    SELECT *
+                    FROM gf_punishments
+                    WHERE ip = ? AND type = 'IP_BAN' AND active = 1
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 1
+                    """;
+
+            try (PreparedStatement psSel = con.prepareStatement(selectSql)) {
+                psSel.setString(1, ip);
+                try (ResultSet rs = psSel.executeQuery()) {
+                    if (rs.next()) {
+                        last = mapPunishment(rs);
+                    }
+                }
+            }
+
+            if (last == null) {
+                return null;
+            }
+
+            // 2) Alle aktiven IP_BANs auf dieser IP deaktivieren
+            try (PreparedStatement psUpd = con.prepareStatement(
+                    "UPDATE gf_punishments SET active = 0 " +
+                            "WHERE ip = ? AND type = 'IP_BAN' AND active = 1"
+            )) {
+                psUpd.setString(1, ip);
+                psUpd.executeUpdate();
+            }
+
+            return last;
+
+        } catch (SQLException e) {
+            logger.error("Fehler bei unbanByIp(ip={}, staff={})", ip, staffName, e);
+            return null;
         }
     }
 
@@ -166,6 +261,7 @@ public class PunishmentService {
         }
     }
 
+    /** Alte Variante (nur boolean), bleibt drin. */
     public boolean unmuteByName(String name) {
         if (name == null || name.isBlank()) return false;
         String key = name.toLowerCase(Locale.ROOT);
@@ -184,28 +280,69 @@ public class PunishmentService {
         }
     }
 
-    // ============================================================
-// WARN
-// ============================================================
+    // Neue Variante für /unmute: gibt das letzte Mute-Objekt zurück
+    public Punishment unmuteByName(String name, String staffName) {
+        if (name == null || name.isBlank()) return null;
+        String key = name.toLowerCase(Locale.ROOT);
 
-    /**
-     * Verwarnung mit optionaler Dauer.
-     * durationMs == null oder <= 0  → permanent (keine expires_at)
-     */
+        try (Connection con = db.getConnection()) {
+
+            Punishment lastMute = null;
+            String selectSql = """
+                    SELECT *
+                    FROM gf_punishments
+                    WHERE LOWER(name) = ? AND type = 'MUTE' AND active = 1
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 1
+                    """;
+
+            try (PreparedStatement psSel = con.prepareStatement(selectSql)) {
+                psSel.setString(1, key);
+                try (ResultSet rs = psSel.executeQuery()) {
+                    if (rs.next()) {
+                        lastMute = mapPunishment(rs);
+                    }
+                }
+            }
+
+            if (lastMute == null) {
+                return null;
+            }
+
+            try (PreparedStatement psUpd = con.prepareStatement(
+                    "UPDATE gf_punishments SET active = 0 " +
+                            "WHERE LOWER(name) = ? AND type = 'MUTE' AND active = 1"
+            )) {
+                psUpd.setString(1, key);
+                psUpd.executeUpdate();
+            }
+
+            return lastMute;
+
+        } catch (SQLException e) {
+            logger.error("Fehler bei unmuteByName(name={}, staff={})", name, staffName, e);
+            return null;
+        }
+    }
+
+    // ============================================================
+    // WARN
+    // ============================================================
+
+    /** einfache Verwarnung, keine Ablaufzeit */
     public Punishment warnPlayer(UUID uuid,
                                  String name,
                                  String ip,
                                  String reason,
-                                 String staff,
-                                 Long durationMs) {
-        return createPunishment(uuid, name, ip, PunishmentType.WARN, reason, staff, durationMs);
+                                 String staff) {
+        // durationMs = 0 → keine expiresAt
+        return createPunishment(uuid, name, ip, PunishmentType.WARN, reason, staff, 0L);
     }
 
-
-    /** Anzahl aller Warns (egal welcher Grund) für Spieler */
+    /** Anzahl aller aktiven WARNs (active = 1) für Spieler */
     public int countWarns(UUID uuid, String name) {
         StringBuilder sql = new StringBuilder(
-                "SELECT COUNT(*) FROM gf_punishments WHERE type = 'WARN' "
+                "SELECT COUNT(*) FROM gf_punishments WHERE type = 'WARN' AND active = 1 "
         );
         List<Object> params = new ArrayList<>();
 
@@ -238,7 +375,145 @@ public class PunishmentService {
         return 0;
     }
 
-    /** Liste der letzten Warns für /warnings */
+    /** Letzte aktive Warnung deaktivieren (alte Variante, nur boolean) */
+    public boolean unwarnLast(UUID uuid, String name) {
+        StringBuilder select = new StringBuilder(
+                "SELECT id FROM gf_punishments WHERE type = 'WARN' AND active = 1 "
+        );
+        List<Object> params = new ArrayList<>();
+
+        if (uuid != null) {
+            select.append("AND uuid = ? ");
+            params.add(uuid.toString());
+        } else if (name != null && !name.isBlank()) {
+            select.append("AND LOWER(name) = ? ");
+            params.add(name.toLowerCase(Locale.ROOT));
+        } else {
+            return false;
+        }
+
+        select.append("ORDER BY created_at DESC, id DESC LIMIT 1");
+
+        try (Connection con = db.getConnection();
+             PreparedStatement psSel = con.prepareStatement(select.toString())) {
+
+            for (int i = 0; i < params.size(); i++) {
+                psSel.setString(i + 1, (String) params.get(i));
+            }
+
+            int id = -1;
+            try (ResultSet rs = psSel.executeQuery()) {
+                if (rs.next()) {
+                    id = rs.getInt("id");
+                }
+            }
+
+            if (id == -1) {
+                return false;
+            }
+
+            try (PreparedStatement psUpd = con.prepareStatement(
+                    "UPDATE gf_punishments SET active = 0 WHERE id = ?"
+            )) {
+                psUpd.setInt(1, id);
+                return psUpd.executeUpdate() > 0;
+            }
+
+        } catch (SQLException e) {
+            logger.error("Fehler bei unwarnLast", e);
+            return false;
+        }
+    }
+
+    /** Neue Variante für /unwarn: letzte Warn zurückgeben */
+    public Punishment clearLastWarn(UUID uuid, String name, String staffName) {
+        StringBuilder select = new StringBuilder(
+                "SELECT * FROM gf_punishments WHERE type = 'WARN' AND active = 1 "
+        );
+        List<Object> params = new ArrayList<>();
+
+        if (uuid != null) {
+            select.append("AND uuid = ? ");
+            params.add(uuid.toString());
+        } else if (name != null && !name.isBlank()) {
+            select.append("AND LOWER(name) = ? ");
+            params.add(name.toLowerCase(Locale.ROOT));
+        } else {
+            return null;
+        }
+
+        select.append("ORDER BY created_at DESC, id DESC LIMIT 1");
+
+        try (Connection con = db.getConnection();
+             PreparedStatement psSel = con.prepareStatement(select.toString())) {
+
+            for (int i = 0; i < params.size(); i++) {
+                psSel.setString(i + 1, (String) params.get(i));
+            }
+
+            Punishment lastWarn = null;
+            int id = -1;
+
+            try (ResultSet rs = psSel.executeQuery()) {
+                if (rs.next()) {
+                    lastWarn = mapPunishment(rs);
+                    id = rs.getInt("id");
+                }
+            }
+
+            if (id == -1 || lastWarn == null) {
+                return null;
+            }
+
+            try (PreparedStatement psUpd = con.prepareStatement(
+                    "UPDATE gf_punishments SET active = 0 WHERE id = ?"
+            )) {
+                psUpd.setInt(1, id);
+                psUpd.executeUpdate();
+            }
+
+            return lastWarn;
+
+        } catch (SQLException e) {
+            logger.error("Fehler bei clearLastWarn(uuid={}, name={}, staff={})", uuid, name, staffName, e);
+            return null;
+        }
+    }
+
+    /** Alle aktiven Warns deaktivieren, gibt Anzahl der entfernten Warns zurück. */
+    public int clearAllWarns(UUID uuid, String name, String staffName) {
+        StringBuilder sql = new StringBuilder(
+                "UPDATE gf_punishments SET active = 0 " +
+                        "WHERE type = 'WARN' AND active = 1 "
+        );
+        List<Object> params = new ArrayList<>();
+
+        if (uuid != null) {
+            sql.append("AND uuid = ? ");
+            params.add(uuid.toString());
+        } else if (name != null && !name.isBlank()) {
+            sql.append("AND LOWER(name) = ? ");
+            params.add(name.toLowerCase(Locale.ROOT));
+        } else {
+            return 0;
+        }
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql.toString())) {
+
+            for (int i = 0; i < params.size(); i++) {
+                ps.setString(i + 1, (String) params.get(i));
+            }
+
+            return ps.executeUpdate();
+
+        } catch (SQLException e) {
+            logger.error("Fehler bei clearAllWarns(uuid={}, name={}, staff={})", uuid, name, staffName, e);
+        }
+        return 0;
+    }
+
+    /** Liste der letzten Warns (alte API, von dir) */
     public List<Punishment> getWarnings(UUID uuid, String name, int limit) {
         List<Punishment> list = new ArrayList<>();
 
@@ -285,8 +560,13 @@ public class PunishmentService {
         return list;
     }
 
+    /** Neue API für /warnings-Command – einfacher Name. */
+    public List<Punishment> getWarns(UUID uuid, String name, int limit) {
+        return getWarnings(uuid, name, limit);
+    }
+
     // ============================================================
-    // KICK (nur History / kein aktiver Punishment)
+    // KICK (nur History)
     // ============================================================
 
     public Punishment logKick(UUID uuid,
@@ -406,17 +686,69 @@ public class PunishmentService {
         return getActivePunishment(PunishmentType.MUTE, uuid, null);
     }
 
+    // ============================================================
+    // ACTIVE BAN/MUTE für /check (UUID + Name + IP)
+    // ============================================================
+
+    public Punishment getActiveBanForCheck(UUID uuid, String name, String ip) {
+        return getActivePunishmentExtended(PunishmentType.BAN, uuid, name, ip);
+    }
+
+    public Punishment getActiveMuteForCheck(UUID uuid, String name, String ip) {
+        return getActivePunishmentExtended(PunishmentType.MUTE, uuid, name, ip);
+    }
+
+    private Punishment getActivePunishmentExtended(PunishmentType type,
+                                                   UUID uuid,
+                                                   String name,
+                                                   String ip) {
+        try (Connection con = db.getConnection()) {
+
+            Punishment p = null;
+
+            // 1) UUID (am genauesten)
+            if (uuid != null) {
+                p = querySingleActive(con, type, "uuid = ?", uuid.toString());
+            }
+
+            // 2) Name (falls UUID nicht bekannt / Spieler offline)
+            if (p == null && name != null && !name.isBlank()) {
+                p = querySingleActive(con, type, "LOWER(name) = ?", name.toLowerCase(Locale.ROOT));
+            }
+
+            // 3) IP (Fallback, z.B. wenn du alte Daten hast)
+            if (p == null && ip != null && !ip.isBlank()) {
+                p = querySingleActive(con, type, "ip = ?", ip);
+            }
+
+            if (p == null) {
+                return null;
+            }
+
+            // Ablauf prüfen
+            if (isExpired(p)) {
+                deactivateById(p.id);
+                return null;
+            }
+
+            return p;
+
+        } catch (SQLException e) {
+            logger.error("Fehler beim Abfragen von {} (extended) für uuid={}, name={}, ip={}",
+                    type, uuid, name, ip, e);
+        }
+        return null;
+    }
+
     private Punishment getActivePunishment(PunishmentType type, UUID uuid, String ip) {
         try (Connection con = db.getConnection()) {
 
             Punishment p = null;
 
-            // 1) UUID
             if (uuid != null) {
                 p = querySingleActive(con, type, "uuid = ?", uuid.toString());
             }
 
-            // 2) IP (optional)
             if (p == null && ip != null && !ip.isBlank()) {
                 p = querySingleActive(con, type, "ip = ?", ip);
             }
@@ -561,6 +893,51 @@ public class PunishmentService {
     }
 
     // ============================================================
+    // LAST KNOWN IP
+    // ============================================================
+
+    /**
+     * Holt die letzte bekannte IP eines Spielers aus gf_punishments.
+     * Nutzt zuerst uuid, sonst name (LOWER(name)).
+     */
+    public String getLastKnownIp(UUID uuid, String name) {
+        StringBuilder sql = new StringBuilder(
+                "SELECT ip FROM gf_punishments WHERE ip IS NOT NULL "
+        );
+        List<Object> params = new ArrayList<>();
+
+        if (uuid != null) {
+            sql.append("AND uuid = ? ");
+            params.add(uuid.toString());
+        } else if (name != null && !name.isBlank()) {
+            sql.append("AND LOWER(name) = ? ");
+            params.add(name.toLowerCase(Locale.ROOT));
+        } else {
+            return null;
+        }
+
+        sql.append("ORDER BY created_at DESC, id DESC LIMIT 1");
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql.toString())) {
+
+            for (int i = 0; i < params.size(); i++) {
+                ps.setString(i + 1, (String) params.get(i));
+            }
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("ip");
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.error("Fehler bei getLastKnownIp", e);
+        }
+        return null;
+    }
+
+    // ============================================================
     // FORMAT-HILFEN
     // ============================================================
 
@@ -591,6 +968,9 @@ public class PunishmentService {
         return sb.toString().trim();
     }
 
+    /**
+     * Simple Dauer-Parser (30m, 1h, 7d, 1w, 1mo, 1y)
+     */
     public Long parseDuration(String input) {
         if (input == null || input.isBlank()) return null;
 
@@ -617,7 +997,6 @@ public class PunishmentService {
     // TAB-HILFEN
     // ============================================================
 
-    /** alle bekannten Namen (für /history, /warn, /check, /unban …) */
     public List<String> getAllPunishedNames() {
         List<String> list = new ArrayList<>();
         String sql = "SELECT DISTINCT name FROM gf_punishments ORDER BY name ASC";
@@ -701,6 +1080,107 @@ public class PunishmentService {
         }
 
         return list;
+    }
+
+    // ============================================================
+    // ALT-CHECK: aktive Bans über IP
+    // ============================================================
+
+    /**
+     * Findet aktive Bans (BAN + IP_BAN) auf derselben IP.
+     *
+     * @param ip          IP, die geprüft werden soll
+     * @param excludeUuid optional: diesen Spieler ausklammern (eigener Login)
+     * @param limit       max. Anzahl Zeilen
+     */
+    public List<Punishment> findActiveBansByIp(String ip, UUID excludeUuid, int limit) {
+        List<Punishment> list = new ArrayList<>();
+        if (ip == null || ip.isBlank()) return list;
+        if (limit <= 0) limit = 10;
+
+        String sql =
+                "SELECT * FROM gf_punishments " +
+                        "WHERE type IN ('BAN','IP_BAN') " +
+                        "AND active = 1 " +
+                        "AND ip = ? " +
+                        (excludeUuid != null ? "AND (uuid IS NULL OR uuid <> ?) " : "") +
+                        "ORDER BY created_at DESC, id DESC LIMIT ?";
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            int idx = 1;
+            ps.setString(idx++, ip);
+            if (excludeUuid != null) {
+                ps.setString(idx++, excludeUuid.toString());
+            }
+            ps.setInt(idx, limit);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(mapPunishment(rs));
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.error("Fehler bei findActiveBansByIp(ip={})", ip, e);
+        }
+
+        return list;
+    }
+
+    // ============================================================
+    // ALT-CHECK: alle Namen über IP (History)
+    // ============================================================
+
+    /**
+     * Findet unterschiedliche Spielernamen, die in gf_punishments mit derselben IP
+     * eingetragen sind (egal ob der Punishment noch aktiv ist oder nicht).
+     *
+     * @param ip          IP, die geprüft werden soll
+     * @param excludeUuid optional: diesen Spieler ausklammern (z.B. der, den du gerade checkst)
+     * @param limit       max. Anzahl Namen
+     */
+    public List<String> findAltsByIp(String ip, UUID excludeUuid, int limit) {
+        List<String> result = new ArrayList<>();
+        if (ip == null || ip.isBlank()) return result;
+        if (limit <= 0) limit = 20;
+
+        StringBuilder sql = new StringBuilder(
+                "SELECT DISTINCT name FROM gf_punishments WHERE ip = ? "
+        );
+
+        // Wenn du den aktuellen Spieler rausfiltern willst
+        if (excludeUuid != null) {
+            sql.append("AND (uuid IS NULL OR uuid <> ?) ");
+        }
+
+        sql.append("ORDER BY name ASC LIMIT ?");
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql.toString())) {
+
+            int i = 1;
+            ps.setString(i++, ip);
+            if (excludeUuid != null) {
+                ps.setString(i++, excludeUuid.toString());
+            }
+            ps.setInt(i, limit);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String name = rs.getString("name");
+                    if (name != null && !name.isBlank()) {
+                        result.add(name);
+                    }
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.error("Fehler bei findAltsByIp(ip={})", ip, e);
+        }
+
+        return result;
     }
 
     // ============================================================

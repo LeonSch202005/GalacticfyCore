@@ -3,13 +3,13 @@ package de.galacticfy.core.command;
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
+import de.galacticfy.core.punish.PunishDesign;
 import de.galacticfy.core.service.PunishmentService;
+import de.galacticfy.core.service.PunishmentService.Punishment;
 import net.kyori.adventure.text.Component;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
 public class UnbanCommand implements SimpleCommand {
 
@@ -29,17 +29,18 @@ public class UnbanCommand implements SimpleCommand {
     }
 
     private boolean hasUnbanPermission(CommandSource src) {
-        if (src instanceof com.velocitypowered.api.proxy.Player player) {
+        if (src instanceof com.velocitypowered.api.proxy.Player p) {
             if (perms != null) {
-                return perms.hasPluginPermission(player, PERM_UNBAN);
+                return perms.hasPluginPermission(p, PERM_UNBAN);
             }
-            return player.hasPermission(PERM_UNBAN);
+            return p.hasPermission(PERM_UNBAN);
         }
         return true;
     }
 
     @Override
     public void execute(Invocation invocation) {
+
         CommandSource src = invocation.source();
         String[] args = invocation.arguments();
 
@@ -50,50 +51,71 @@ public class UnbanCommand implements SimpleCommand {
 
         if (args.length < 1) {
             src.sendMessage(prefix().append(Component.text(
-                    "§eBenutzung: §b/unban <Spieler>"
+                    "§eBenutzung: §b/unban <Spieler|IP>"
             )));
             return;
         }
 
-        String name = args[0];
+        String targetOrIp = args[0];
+        String staffName = (src instanceof com.velocitypowered.api.proxy.Player p)
+                ? p.getUsername()
+                : "Konsole";
 
-        boolean ok = punishmentService.unbanByName(name);
-        if (!ok) {
-            src.sendMessage(prefix().append(Component.text(
-                    "§cKein aktiver Ban für §e" + name + " §cgefunden."
-            )));
+        // Ganz simpel: IP = enthält Punkt → IP-Unban
+        Punishment result;
+
+        if (targetOrIp.contains(".")) {
+            // Du musst in PunishmentService z.B. implementieren:
+            // Punishment unbanByIp(String ip, String staffName)
+            result = punishmentService.unbanByIp(targetOrIp, staffName);
         } else {
-            src.sendMessage(prefix().append(Component.text(
-                    "§aBan für §e" + name + " §awurde aufgehoben."
-            )));
+            // Und hier:
+            // Punishment unbanByName(String name, String staffName)
+            result = punishmentService.unbanByName(targetOrIp, staffName);
         }
+
+        if (result == null) {
+            src.sendMessage(prefix().append(Component.text(
+                    "§cEs wurde kein aktiver Ban für §e" + targetOrIp + " §cgefunden."
+            )));
+            return;
+        }
+
+        src.sendMessage(Component.text(" "));
+        src.sendMessage(Component.text(PunishDesign.BIG_HEADER_UNBAN));
+        src.sendMessage(Component.text(" "));
+        src.sendMessage(Component.text("§7Ziel:   §f" + targetOrIp));
+        src.sendMessage(Component.text("§7Von:    §f" + staffName));
+        src.sendMessage(Component.text("§7Typ:    §f" + result.type));
+        src.sendMessage(Component.text(PunishDesign.LINE));
+        src.sendMessage(Component.text(" "));
+    }
+
+    @Override
+    public boolean hasPermission(Invocation invocation) {
+        return hasUnbanPermission(invocation.source());
     }
 
     @Override
     public List<String> suggest(Invocation invocation) {
-        CommandSource src = invocation.source();
-        String[] args = invocation.arguments();
-
-        if (!hasUnbanPermission(src)) {
+        if (!hasUnbanPermission(invocation.source())) {
             return List.of();
         }
 
-        // /unban <Spieler>  – ohne Prefix alle aktiven Bans
+        String[] args = invocation.arguments();
+
         if (args.length == 0) {
-            return punishmentService.getActiveBannedNames().stream()
-                    .filter(Objects::nonNull)
-                    .sorted(String.CASE_INSENSITIVE_ORDER)
-                    .collect(Collectors.toList());
+            // Einfach alle bekannten punished Namen
+            return punishmentService.getAllPunishedNames();
         }
 
         if (args.length == 1) {
             String prefix = args[0].toLowerCase(Locale.ROOT);
-            return punishmentService.getActiveBannedNames().stream()
-                    .filter(Objects::nonNull)
-                    .filter(n -> prefix.isEmpty()
-                            || n.toLowerCase(Locale.ROOT).startsWith(prefix))
+
+            return punishmentService.getAllPunishedNames().stream()
+                    .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(prefix))
                     .sorted(String.CASE_INSENSITIVE_ORDER)
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         return List.of();

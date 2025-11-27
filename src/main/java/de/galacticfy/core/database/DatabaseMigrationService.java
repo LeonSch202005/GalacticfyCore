@@ -8,7 +8,7 @@ import java.sql.Statement;
 
 /**
  * Legt Tabellen für Rollen, User-Rollen, Permissions, Inheritance,
- * Maintenance-Konfiguration und Punishments an.
+ * Maintenance-Konfiguration, Punishments und Reports an.
  */
 public class DatabaseMigrationService {
 
@@ -102,7 +102,7 @@ public class DatabaseMigrationService {
                     """);
 
             // ===========================
-            // PUNISHMENTS (Bans + Mutes + Kicks)
+            // PUNISHMENTS (Bans + Mutes + Kicks + Warns + IP-Bans)
             // ===========================
             st.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS gf_punishments (
@@ -110,7 +110,7 @@ public class DatabaseMigrationService {
                         uuid CHAR(36) NULL,
                         name VARCHAR(16) NOT NULL,
                         ip VARCHAR(45) NULL,
-                        type VARCHAR(16) NOT NULL, -- BAN, MUTE oder KICK
+                        type VARCHAR(16) NOT NULL, -- BAN, IP_BAN, MUTE, KICK, WARN
                         reason VARCHAR(255) NOT NULL,
                         staff VARCHAR(32) NOT NULL,
                         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -119,6 +119,23 @@ public class DatabaseMigrationService {
                         INDEX idx_punish_uuid_type_active (uuid, type, active),
                         INDEX idx_punish_ip_type_active (ip, type, active),
                         INDEX idx_punish_name (name)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                    """);
+
+            // ===========================
+            // REPORTS (/report)
+            // ===========================
+            st.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS gf_reports (
+                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        reporter_name VARCHAR(16) NOT NULL,
+                        target_name  VARCHAR(16) NOT NULL,
+                        server_name  VARCHAR(64),
+                        reason       TEXT NOT NULL,
+                        preset_key   VARCHAR(64),
+                        INDEX idx_reports_target (target_name),
+                        INDEX idx_reports_created_at (created_at)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                     """);
 

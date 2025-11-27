@@ -891,6 +891,41 @@ public class GalacticfyPermissionService {
         String legacy = role.prefix.replace('&', '§');
         return LegacyComponentSerializer.legacySection().deserialize(legacy);
     }
+    /**
+     * Prüft die Permission eines OFFLINE Spielers anhand der gespeicherten Rollen.
+     */
+    public boolean hasOfflinePlayerPermission(String name, String permission) {
+        if (name == null || permission == null) return false;
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "SELECT r.permissions FROM gf_roles r " +
+                             "JOIN gf_user_roles ur ON ur.role_name = r.name " +
+                             "WHERE LOWER(ur.username) = ?"
+             )) {
+
+            ps.setString(1, name.toLowerCase(Locale.ROOT));
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String permsString = rs.getString("permissions");
+                    if (permsString == null) continue;
+
+                    String[] perms = permsString.split(";");
+                    for (String p : perms) {
+                        if (p.equalsIgnoreCase(permission)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.error("Fehler beim Offline-Permission-Check für {}", name, e);
+        }
+
+        return false;
+    }
 
 
 

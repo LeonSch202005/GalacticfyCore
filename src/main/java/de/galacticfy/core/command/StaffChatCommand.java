@@ -7,18 +7,14 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
 import net.kyori.adventure.text.Component;
 
-import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
-import java.util.stream.Collectors;
 
 public class StaffChatCommand implements SimpleCommand {
 
-    private static final String PERM_STAFFCHAT_WRITE = "galacticfy.staffchat.write";
-    private static final String PERM_STAFFCHAT_READ  = "galacticfy.staffchat.read";
-
     private final ProxyServer proxy;
     private final GalacticfyPermissionService perms;
+
+    private static final String PERM_STAFFCHAT = "galacticfy.staffchat";
 
     public StaffChatCommand(ProxyServer proxy,
                             GalacticfyPermissionService perms) {
@@ -27,25 +23,17 @@ public class StaffChatCommand implements SimpleCommand {
     }
 
     private Component prefix() {
-        return Component.text("§8[§cStaff§8] §r");
+        return Component.text("§8[§cStaffChat§8] §r");
     }
 
-    private boolean canWrite(CommandSource src) {
+    private boolean hasStaffChat(CommandSource src) {
         if (src instanceof Player p) {
             if (perms != null) {
-                return perms.hasPluginPermission(p, PERM_STAFFCHAT_WRITE);
+                return perms.hasPluginPermission(p, PERM_STAFFCHAT);
             }
-            return p.hasPermission(PERM_STAFFCHAT_WRITE);
+            return p.hasPermission(PERM_STAFFCHAT);
         }
         return true;
-    }
-
-    private boolean canRead(Player p) {
-        if (perms != null) {
-            return perms.hasPluginPermission(p, PERM_STAFFCHAT_READ)
-                    || perms.hasPluginPermission(p, PERM_STAFFCHAT_WRITE);
-        }
-        return p.hasPermission(PERM_STAFFCHAT_READ) || p.hasPermission(PERM_STAFFCHAT_WRITE);
     }
 
     @Override
@@ -53,37 +41,46 @@ public class StaffChatCommand implements SimpleCommand {
         CommandSource src = invocation.source();
         String[] args = invocation.arguments();
 
-        if (!canWrite(src)) {
-            src.sendMessage(prefix().append(Component.text("§cDazu hast du keine Berechtigung.")));
+        if (!hasStaffChat(src)) {
+            if (src instanceof Player) {
+                src.sendMessage(prefix().append(Component.text("§cDazu hast du keine Berechtigung.")));
+            }
             return;
         }
 
         if (args.length == 0) {
-            src.sendMessage(prefix().append(Component.text(
-                    "§eBenutzung: §b/staffchat <Nachricht...>"
-            )));
+            src.sendMessage(prefix().append(Component.text("§eBenutzung: §b/staffchat <Nachricht>")));
             return;
         }
 
-        String msg = String.join(" ", Arrays.copyOfRange(args, 0, args.length));
-        String name = (src instanceof Player p) ? p.getUsername() : "Konsole";
+        String senderName = (src instanceof Player p) ? p.getUsername() : "Konsole";
+        String msg = String.join(" ", args);
 
-        Component out = Component.text("§8[§cStaff§8] §c" + name + "§8: §7" + msg);
+        Component out = Component.text("§8[§cSC§8] §c" + senderName + " §8» §f" + msg);
 
-        // an Console
-        proxy.getConsoleCommandSource().sendMessage(out);
-
-        // an Staff
-        proxy.getAllPlayers().forEach(p -> {
-            if (canRead(p)) {
-                p.sendMessage(out);
+        proxy.getAllPlayers().forEach(player -> {
+            if (hasStaffChat(player)) {
+                player.sendMessage(out);
             }
         });
+
+        if (!(src instanceof Player)) {
+            // Konsole auch anzeigen
+            src.sendMessage(out);
+        }
+    }
+
+    @Override
+    public boolean hasPermission(Invocation invocation) {
+        return hasStaffChat(invocation.source());
     }
 
     @Override
     public List<String> suggest(Invocation invocation) {
-        // keine speziellen Vorschläge
+        if (!hasStaffChat(invocation.source())) {
+            return List.of();
+        }
+        // Keine speziellen Tab-Vorschläge nötig
         return List.of();
     }
 }

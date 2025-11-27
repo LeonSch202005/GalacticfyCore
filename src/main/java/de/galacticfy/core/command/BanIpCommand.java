@@ -3,29 +3,32 @@ package de.galacticfy.core.command;
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.proxy.ProxyServer;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
-import de.galacticfy.core.punish.ReasonPresets;
-import de.galacticfy.core.punish.ReasonPresets.Preset;
+import de.galacticfy.core.punish.PunishDesign;
 import de.galacticfy.core.service.PunishmentService;
 import de.galacticfy.core.service.PunishmentService.Punishment;
 import de.galacticfy.core.util.DiscordWebhookNotifier;
 import net.kyori.adventure.text.Component;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Locale;
+import java.net.InetSocketAddress;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class BanIpCommand implements SimpleCommand {
 
     private static final String PERM_BANIP = "galacticfy.punish.banip";
 
+    private final ProxyServer proxy;
     private final GalacticfyPermissionService perms;
     private final PunishmentService punishmentService;
     private final DiscordWebhookNotifier webhook;
 
-    public BanIpCommand(GalacticfyPermissionService perms,
+    public BanIpCommand(ProxyServer proxy,
+                        GalacticfyPermissionService perms,
                         PunishmentService punishmentService,
                         DiscordWebhookNotifier webhook) {
+        this.proxy = proxy;
         this.perms = perms;
         this.punishmentService = punishmentService;
         this.webhook = webhook;
@@ -42,12 +45,11 @@ public class BanIpCommand implements SimpleCommand {
             }
             return p.hasPermission(PERM_BANIP);
         }
-        return true; // Konsole darf alles
+        return true;
     }
 
     @Override
     public void execute(Invocation invocation) {
-
         CommandSource src = invocation.source();
         String[] args = invocation.arguments();
 
@@ -58,61 +60,45 @@ public class BanIpCommand implements SimpleCommand {
 
         if (args.length < 2) {
             src.sendMessage(prefix().append(Component.text(
-                    "§eBenutzung: §b/banip <IP> <Dauer|Preset|perm> [Grund...]"
+                    "§eBenutzung: §b/banip <IP> <Dauer|perm> [Grund...]"
             )));
             return;
         }
 
         String ip = args[0];
-        String durationOrPreset = args[1].toLowerCase(Locale.ROOT);
 
-        // ===========================================
-        // Dauer / Preset auflösen
-        // ===========================================
-        Long durationMs = null;
+        if (!ip.contains(".")) {
+            src.sendMessage(prefix().append(Component.text("§cBitte eine gültige IP angeben.")));
+            return;
+        }
+
+        String durationArg = args[1].toLowerCase(Locale.ROOT);
+        Long durationMs;
         String reason;
-        String presetKeyUsed = null;
 
-        Preset preset = ReasonPresets.find(durationOrPreset);
-        if (preset != null) {
-            durationMs = preset.defaultDurationMs(); // kann null = permanent sein
-            presetKeyUsed = preset.key();
-
-            if (args.length > 2) {
-                String extra = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
-                reason = preset.display() + " §8(§7" + extra + "§8)";
-            } else {
-                reason = preset.display();
-            }
-
+        if (durationArg.equals("perm") || durationArg.equals("permanent")) {
+            durationMs = null;
         } else {
-            if (durationOrPreset.equals("perm") || durationOrPreset.equals("permanent")) {
-                durationMs = null;
-            } else {
-                durationMs = punishmentService.parseDuration(durationOrPreset);
-                if (durationMs == null) {
-                    src.sendMessage(prefix().append(Component.text(
-                            "§cUngültige Dauer oder Preset! Beispiele: §b30m§7, §b1h§7, §b7d§7, §bspam§7, §bhackclient§7, §bperm§7"
-                    )));
-                    return;
-                }
-            }
-
-            if (args.length > 2) {
-                reason = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
-            } else {
-                reason = "Kein Grund angegeben";
+            durationMs = punishmentService.parseDuration(durationArg);
+            if (durationMs == null) {
+                src.sendMessage(prefix().append(Component.text(
+                        "§cUngültige Dauer! Beispiele: §b30m§7, §b1h§7, §b7d§7, §bperm§7"
+                )));
+                return;
             }
         }
 
-        String staffName = (src instanceof Player p)
-                ? p.getUsername()
-                : "Konsole";
+        if (args.length > 2) {
+            reason = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
+        } else {
+            reason = "Kein Grund angegeben";
+        }
 
-        // IP-Ban in DB
+        String staffName = (src instanceof Player p) ? p.getUsername() : "Konsole";
+
         Punishment p = punishmentService.banIp(ip, reason, staffName, durationMs);
         if (p == null) {
-            src.sendMessage(prefix().append(Component.text("§cKonnte IP-Ban nicht speichern (DB-Fehler oder ungültige IP).")));
+            src.sendMessage(prefix().append(Component.text("§cKonnte IP-Ban nicht speichern (DB-Fehler).")));
             return;
         }
 
@@ -120,57 +106,78 @@ public class BanIpCommand implements SimpleCommand {
                 ? "§cPermanent"
                 : "§e" + punishmentService.formatRemaining(p);
 
-        // Staff-Feedback
         src.sendMessage(Component.text(" "));
-        src.sendMessage(prefix().append(Component.text("§aIP §e" + ip + " §awurde gebannt.")));
-        src.sendMessage(Component.text("§8§m────────────────────────────────"));
-        src.sendMessage(Component.text("§7Grund: §f" + reason));
-        src.sendMessage(Component.text("§7Dauer: " + durText));
-        if (presetKeyUsed != null) {
-            src.sendMessage(Component.text("§7Preset: §b" + presetKeyUsed));
-        }
-        src.sendMessage(Component.text("§7Von: §f" + staffName));
-        src.sendMessage(Component.text("§8§m────────────────────────────────"));
+        src.sendMessage(Component.text(PunishDesign.BIG_HEADER_BANIP));
+        src.sendMessage(Component.text(" "));
+        src.sendMessage(Component.text("§7IP:     §f" + ip));
+        src.sendMessage(Component.text("§7Grund:  §f" + reason));
+        src.sendMessage(Component.text("§7Dauer:  " + durText));
+        src.sendMessage(Component.text("§7Von:    §f" + staffName));
+        src.sendMessage(Component.text(PunishDesign.LINE));
         src.sendMessage(Component.text(" "));
 
-        // Discord-Webhook
+        Component kickMsg = Component.text(
+                "§c§lGalacticfy §8» §cDu wurdest (IP) gebannt.\n" +
+                        "§7IP: §f" + ip + "\n" +
+                        "§7Grund: §f" + reason + "\n" +
+                        "§7Dauer: " + (p.expiresAt == null ? "§cPermanent" : "§e" + punishmentService.formatRemaining(p)) + "\n" +
+                        "§7Von: §b" + staffName
+        );
+
+        proxy.getAllPlayers().forEach(player -> {
+            Object remote = player.getRemoteAddress();
+            if (remote instanceof InetSocketAddress isa && isa.getAddress() != null) {
+                String playerIp = isa.getAddress().getHostAddress();
+                if (ip.equals(playerIp)) {
+                    player.disconnect(kickMsg);
+                }
+            }
+        });
+
         if (webhook != null && webhook.isEnabled()) {
-            webhook.sendBanIp(p);
+            webhook.sendBan(p);
         }
     }
 
-    // ===========================
-    // TAB-COMPLETE
-    // ===========================
+    @Override
+    public boolean hasPermission(Invocation invocation) {
+        return hasBanIpPermission(invocation.source());
+    }
 
     @Override
     public List<String> suggest(Invocation invocation) {
-        String[] args = invocation.arguments();
-
         if (!hasBanIpPermission(invocation.source())) {
             return List.of();
         }
 
-        // /banip <IP> → keine gute Auto-Vervollständigung, bleibt leer
-        if (args.length == 1) {
-            return List.of();
+        String[] args = invocation.arguments();
+
+        // /banip <IP>
+        if (args.length == 1 || args.length == 0) {
+            String prefix = args.length == 0 ? "" : args[0].toLowerCase(Locale.ROOT);
+
+            return proxy.getAllPlayers().stream()
+                    .map(player -> {
+                        Object remote = player.getRemoteAddress();
+                        if (remote instanceof InetSocketAddress isa && isa.getAddress() != null) {
+                            return isa.getAddress().getHostAddress();
+                        }
+                        return null;
+                    })
+                    .filter(Objects::nonNull)
+                    .filter(ip -> ip.startsWith(prefix))
+                    .distinct()
+                    .sorted()
+                    .collect(Collectors.toList());
         }
 
-        // /banip <IP> <Dauer|Preset>
+        // /banip <IP> <Dauer>
         if (args.length == 2) {
             String prefix = args[1].toLowerCase(Locale.ROOT);
-
-            List<String> base = List.of("10m", "30m", "1h", "6h", "1d", "7d", "30d", "1mo", "1y", "perm");
-            List<String> presets = ReasonPresets.tabComplete(prefix);
-
-            new java.util.ArrayList<String>();
-
-            java.util.ArrayList<String> result = new java.util.ArrayList<>();
-            for (String s : base) {
-                if (s.startsWith(prefix)) result.add(s);
-            }
-            result.addAll(presets);
-            return result;
+            List<String> base = Arrays.asList("10m", "30m", "1h", "6h", "1d", "7d", "30d", "1mo", "1y", "perm");
+            return base.stream()
+                    .filter(s -> s.startsWith(prefix))
+                    .collect(Collectors.toList());
         }
 
         return List.of();
