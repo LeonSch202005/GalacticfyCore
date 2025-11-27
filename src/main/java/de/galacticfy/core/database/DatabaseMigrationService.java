@@ -7,8 +7,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 /**
- * Legt Tabellen für Rollen, User-Rollen, Permissions, Inheritance
- * und Maintenance-Konfiguration an.
+ * Legt Tabellen für Rollen, User-Rollen, Permissions, Inheritance,
+ * Maintenance-Konfiguration und Punishments an.
  */
 public class DatabaseMigrationService {
 
@@ -98,6 +98,27 @@ public class DatabaseMigrationService {
             st.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS gf_maintenance_whitelist_groups (
                         group_name VARCHAR(64) NOT NULL PRIMARY KEY
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                    """);
+
+            // ===========================
+            // PUNISHMENTS (Bans + Mutes + Kicks)
+            // ===========================
+            st.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS gf_punishments (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        uuid CHAR(36) NULL,
+                        name VARCHAR(16) NOT NULL,
+                        ip VARCHAR(45) NULL,
+                        type VARCHAR(16) NOT NULL, -- BAN, MUTE oder KICK
+                        reason VARCHAR(255) NOT NULL,
+                        staff VARCHAR(32) NOT NULL,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        expires_at TIMESTAMP NULL DEFAULT NULL,
+                        active TINYINT(1) NOT NULL DEFAULT 1,
+                        INDEX idx_punish_uuid_type_active (uuid, type, active),
+                        INDEX idx_punish_ip_type_active (ip, type, active),
+                        INDEX idx_punish_name (name)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                     """);
 

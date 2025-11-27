@@ -15,6 +15,7 @@ import de.galacticfy.core.listener.*;
 import de.galacticfy.core.motd.GalacticfyMotdProvider;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
 import de.galacticfy.core.service.MaintenanceService;
+import de.galacticfy.core.service.PunishmentService;
 import de.galacticfy.core.service.ServerTeleportService;
 import de.galacticfy.core.util.DiscordWebhookNotifier;
 import org.slf4j.Logger;
@@ -36,6 +37,9 @@ public class GalacticfyCore {
     private DatabaseManager databaseManager;
     private GalacticfyPermissionService permissionService;
     private DiscordWebhookNotifier discordNotifier;
+
+    // Neu: zentrales Punishment-System
+    private PunishmentService punishmentService;
 
     @Inject
     public GalacticfyCore(ProxyServer proxy, Logger logger) {
@@ -59,13 +63,18 @@ public class GalacticfyCore {
         // Eigenes Permission- / Rollen-System
         this.permissionService = new GalacticfyPermissionService(databaseManager, logger);
 
+        // Punishment-System (Bans, Mutes, History)
+        this.punishmentService = new PunishmentService(databaseManager, logger);
+
         // Discord-Webhook (TODO: später aus Config lesen)
-        String webhookUrl = "DEIN_WEBHOOK_HIER";
+        String webhookUrl = "https://discord.com/api/webhooks/1443274192542765168/aHgrQP2ADryVWfhdoW5dcP7Vd8J_YU9aOkjEVkYNlVc-4wLEnAs-E5e-IfJg0fBwN8dJ";
         this.discordNotifier = new DiscordWebhookNotifier(logger, webhookUrl);
 
         CommandManager commandManager = proxy.getCommandManager();
 
+        // ==============================
         // Teleport-Commands
+        // ==============================
         CommandMeta hubMeta = commandManager.metaBuilder("hub")
                 .aliases("lobby", "spawn")
                 .build();
@@ -89,7 +98,9 @@ public class GalacticfyCore {
                 .build();
         commandManager.register(sendMeta, new SendCommand(proxy, teleportService, permissionService));
 
+        // ==============================
         // Maintenance (EN / DE Layout)
+        // ==============================
         CommandMeta maintenanceMeta = commandManager.metaBuilder("maintenance").build();
         commandManager.register(
                 maintenanceMeta,
@@ -102,17 +113,80 @@ public class GalacticfyCore {
                 new MaintenanceCommand(maintenanceService, proxy, discordNotifier, true, permissionService)
         );
 
+        // ==============================
         // Rank / Rollen-Verwaltung
+        // ==============================
         CommandMeta rankMeta = commandManager.metaBuilder("rank").build();
         commandManager.register(rankMeta, new RankCommand(permissionService, proxy));
 
+        // ==============================
+// Punishment-Commands
+// ==============================
+
+// /ban <Spieler> <Dauer|perm> [Grund...]
+        CommandMeta banMeta = commandManager.metaBuilder("ban").build();
+        commandManager.register(banMeta, new BanCommand(proxy, permissionService, punishmentService, discordNotifier));
+
+// /banip <IP> <Dauer|perm> [Grund...]
+        CommandMeta banIpMeta = commandManager.metaBuilder("banip").build();
+        commandManager.register(banIpMeta, new BanIpCommand(permissionService, punishmentService, discordNotifier));
+
+// /unban <Spieler/IP>
+        CommandMeta unbanMeta = commandManager.metaBuilder("unban").build();
+        commandManager.register(unbanMeta, new UnbanCommand(punishmentService, permissionService));
+
+// /mute <Spieler> [Dauer] [Grund...]
+        CommandMeta muteMeta = commandManager.metaBuilder("mute").build();
+        commandManager.register(muteMeta, new MuteCommand(proxy, permissionService, punishmentService, discordNotifier));
+
+// /unmute <Spieler>
+        CommandMeta unmuteMeta = commandManager.metaBuilder("unmute").build();
+        commandManager.register(unmuteMeta, new UnmuteCommand(punishmentService, permissionService));
+
+// /kick <Spieler> [Grund...]
+        CommandMeta kickMeta = commandManager.metaBuilder("kick").build();
+        commandManager.register(kickMeta, new KickCommand(proxy, permissionService, punishmentService, discordNotifier));
+
+// /history <Spieler> – zeigt Strafe-Historie
+        CommandMeta historyMeta = commandManager.metaBuilder("history").build();
+        commandManager.register(historyMeta,
+                new HistoryCommand(proxy, punishmentService, permissionService));
+
+        // /check <Spieler>
+        CommandMeta checkMeta = commandManager.metaBuilder("check").build();
+        commandManager.register(checkMeta, new CheckCommand(proxy, permissionService, punishmentService));
+
+// /warnings <Spieler>
+        CommandMeta warningsMeta = commandManager.metaBuilder("warnings").build();
+        commandManager.register(warningsMeta, new WarningsCommand(proxy, permissionService, punishmentService));
+
+// /warn <Spieler> <Preset|Grund...>
+        CommandMeta warnMeta = commandManager.metaBuilder("warn").build();
+        commandManager.register(warnMeta, new WarnCommand(proxy, permissionService, punishmentService));
+
+// /report <Spieler> <Preset|Grund...>
+        CommandMeta reportMeta = commandManager.metaBuilder("report").build();
+        commandManager.register(reportMeta, new ReportCommand(proxy, permissionService));
+
+// /staffchat <Nachricht...>  (Alias: /sc)
+        CommandMeta staffMeta = commandManager.metaBuilder("staffchat")
+                .aliases("sc")
+                .build();
+        commandManager.register(staffMeta, new StaffChatCommand(proxy, permissionService));
+
+
+        // ==============================
         // Listener
+        // ==============================
         proxy.getEventManager().register(this,
                 new ConnectionProtectionListener(logger, proxy, maintenanceService));
+
         proxy.getEventManager().register(this,
                 new GalacticfyMotdProvider(maintenanceService));
+
         proxy.getEventManager().register(this,
                 new MaintenanceListener(maintenanceService, logger, permissionService));
+
         proxy.getEventManager().register(this,
                 new PermissionsSetupListener(permissionService, logger));
 
@@ -120,7 +194,11 @@ public class GalacticfyCore {
         proxy.getEventManager().register(this,
                 new TablistPrefixListener(proxy, permissionService, logger));
 
-        logger.info("GalacticfyCore: Commands & Listener registriert.");
+        // Punishment-Listener: Bans beim Login checken
+        proxy.getEventManager().register(this,
+                new PunishmentLoginListener(punishmentService, logger));
+
+        logger.info("GalacticfyCore: Commands, Listener & Punishment-System registriert.");
     }
 
     @Subscribe
@@ -137,6 +215,10 @@ public class GalacticfyCore {
 
         if (databaseManager != null) {
             databaseManager.shutdown();
+        }
+
+        if (punishmentService != null) {
+            punishmentService.shutdown();
         }
 
         logger.info("GalacticfyCore: Shutdown abgeschlossen.");
