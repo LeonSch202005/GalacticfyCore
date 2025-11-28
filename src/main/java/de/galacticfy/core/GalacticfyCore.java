@@ -31,10 +31,13 @@ public class GalacticfyCore {
 
     private ServerTeleportService teleportService;
     private MaintenanceService maintenanceService;
+    private FreezeService freezeService;
 
     private DatabaseManager databaseManager;
     private GalacticfyPermissionService permissionService;
     private DiscordWebhookNotifier discordNotifier;
+    private SessionService sessionService;
+    private ChatFilterService chatFilterService;
 
     private PunishmentService punishmentService;
     private ReportService reportService;
@@ -58,12 +61,15 @@ public class GalacticfyCore {
         this.databaseManager = new DatabaseManager(logger);
         this.databaseManager.init();
         new DatabaseMigrationService(databaseManager, logger).runMigrations();
+        this.sessionService = new SessionService(databaseManager, logger);
 
         // ==============================
         // Services
         // ==============================
         this.teleportService = new ServerTeleportService(proxy, logger);
         this.maintenanceService = new MaintenanceService(logger, databaseManager);
+        this.freezeService = new FreezeService(proxy);
+        this.chatFilterService = new ChatFilterService();
 
         this.permissionService = new GalacticfyPermissionService(databaseManager, logger);
         this.punishmentService = new PunishmentService(databaseManager, logger);
@@ -76,11 +82,19 @@ public class GalacticfyCore {
         String webhookUrl = "https://discord.com/api/webhooks/1443274192542765168/aHgrQP2ADryVWfhdoW5dcP7Vd8J_YU9aOkjEVkYNlVc-4wLEnAs-E5e-IfJg0fBwN8dJ";
         this.discordNotifier = new DiscordWebhookNotifier(logger, webhookUrl);
 
+        // ==============================
+        // Plugin-Message Channel (Freeze)
+        // ==============================
+        proxy.getChannelRegistrar().register(FreezeService.FREEZE_CHANNEL);
+
         CommandManager commandManager = proxy.getCommandManager();
 
         // ==============================
-        // Teleport-Commands
+        // Teleport- & Utility-Commands
         // ==============================
+        CommandMeta freezeMeta = commandManager.metaBuilder("freeze").build();
+        commandManager.register(freezeMeta, new FreezeCommand(proxy, freezeService));
+
         CommandMeta hubMeta = commandManager.metaBuilder("hub")
                 .aliases("lobby", "spawn")
                 .build();
@@ -122,6 +136,26 @@ public class GalacticfyCore {
         // ==============================
         CommandMeta rankMeta = commandManager.metaBuilder("rank").build();
         commandManager.register(rankMeta, new RankCommand(permissionService, proxy));
+
+        CommandMeta proxyInfoMeta = commandManager.metaBuilder("proxyinfo")
+                .aliases("tps")
+                .build();
+        commandManager.register(
+                proxyInfoMeta,
+                new ProxyInfoCommand(proxy)
+        );
+
+        CommandMeta reportsMeta = commandManager.metaBuilder("reports").build();
+        commandManager.register(
+                reportsMeta,
+                new ReportsCommand(reportService)
+        );
+
+        CommandMeta seenMeta = commandManager.metaBuilder("seen").build();
+        commandManager.register(
+                seenMeta,
+                new SeenCommand(proxy, permissionService, sessionService)
+        );
 
         // ==============================
         // Punishment-Commands
@@ -215,13 +249,28 @@ public class GalacticfyCore {
                 new BroadcastCommand(messageService, permissionService)
         );
 
-        // Staffchat
+        CommandMeta glistMeta = commandManager.metaBuilder("glist").build();
+        commandManager.register(glistMeta, new GlistCommand(proxy));
+
+        CommandMeta whereisMeta = commandManager.metaBuilder("whereis").build();
+        commandManager.register(whereisMeta, new WhereisCommand(proxy));
+
+        CommandMeta sendallMeta = commandManager.metaBuilder("sendall").build();
+        commandManager.register(sendallMeta, new SendAllCommand(proxy));
+
+        // Staffchat & Staff-Liste
         CommandMeta staffMeta = commandManager.metaBuilder("staffchat")
                 .aliases("sc")
                 .build();
         commandManager.register(
                 staffMeta,
                 new StaffChatCommand(proxy, permissionService)
+        );
+
+        CommandMeta staffListMeta = commandManager.metaBuilder("staff").build();
+        commandManager.register(
+                staffListMeta,
+                new StaffCommand(proxy, permissionService)
         );
 
         CommandMeta unwarnMeta = commandManager.metaBuilder("unwarn").build();
@@ -240,6 +289,9 @@ public class GalacticfyCore {
                 new GalacticfyMotdProvider(maintenanceService));
 
         proxy.getEventManager().register(this,
+                new FreezeListener(freezeService));
+
+        proxy.getEventManager().register(this,
                 new MaintenanceListener(maintenanceService, logger, permissionService));
 
         proxy.getEventManager().register(this,
@@ -250,6 +302,15 @@ public class GalacticfyCore {
 
         proxy.getEventManager().register(this,
                 new PunishmentLoginListener(punishmentService, logger, proxy, permissionService));
+
+        proxy.getEventManager().register(this,
+                new ChatFilterListener(chatFilterService));
+
+        proxy.getEventManager().register(this,
+                new ReportJoinListener(reportService, permissionService, logger));
+
+        proxy.getEventManager().register(this,
+                new SessionListener(sessionService, logger));
 
         logger.info("GalacticfyCore: Commands, Listener, Punishment-, Report-, AutoBroadcast- & NPC-System registriert.");
     }
@@ -277,6 +338,7 @@ public class GalacticfyCore {
         if (punishmentService != null) {
             punishmentService.shutdown();
         }
+
         logger.info("GalacticfyCore: Shutdown abgeschlossen.");
     }
 }

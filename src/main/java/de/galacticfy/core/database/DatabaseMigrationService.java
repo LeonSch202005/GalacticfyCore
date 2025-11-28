@@ -79,6 +79,25 @@ public class DatabaseMigrationService {
                     """);
 
             // ===========================
+// SESSIONS (/seen, /check)
+// ===========================
+            st.executeUpdate("""
+        CREATE TABLE IF NOT EXISTS gf_sessions (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            uuid CHAR(36) NOT NULL,
+            name VARCHAR(16) NOT NULL,
+            first_login TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_login  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_logout TIMESTAMP NULL DEFAULT NULL,
+            total_play_seconds BIGINT NOT NULL DEFAULT 0,
+            last_server VARCHAR(64) NULL,
+            INDEX idx_sessions_uuid (uuid),
+            INDEX idx_sessions_name (name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        """);
+
+
+            // ===========================
             // MAINTENANCE CONFIG
             // ===========================
             st.executeUpdate("""
@@ -134,10 +153,42 @@ public class DatabaseMigrationService {
                         server_name  VARCHAR(64),
                         reason       TEXT NOT NULL,
                         preset_key   VARCHAR(64),
+                        handled      TINYINT(1) NOT NULL DEFAULT 0,
+                        handled_by   VARCHAR(32) NULL,
+                        handled_at   TIMESTAMP NULL DEFAULT NULL,
                         INDEX idx_reports_target (target_name),
-                        INDEX idx_reports_created_at (created_at)
+                        INDEX idx_reports_created_at (created_at),
+                        INDEX idx_reports_handled (handled)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                     """);
+
+            // für bereits existierende Tabellen ohne Spalten: nachziehen
+            try {
+                st.executeUpdate("""
+                        ALTER TABLE gf_reports
+                            ADD COLUMN IF NOT EXISTS handled TINYINT(1) NOT NULL DEFAULT 0
+                        """);
+            } catch (SQLException e) {
+                logger.debug("gf_reports: Spalte 'handled' existiert evtl. bereits.", e);
+            }
+
+            try {
+                st.executeUpdate("""
+                        ALTER TABLE gf_reports
+                            ADD COLUMN IF NOT EXISTS handled_by VARCHAR(32) NULL
+                        """);
+            } catch (SQLException e) {
+                logger.debug("gf_reports: Spalte 'handled_by' existiert evtl. bereits.", e);
+            }
+
+            try {
+                st.executeUpdate("""
+                        ALTER TABLE gf_reports
+                            ADD COLUMN IF NOT EXISTS handled_at TIMESTAMP NULL
+                        """);
+            } catch (SQLException e) {
+                logger.debug("gf_reports: Spalte 'handled_at' existiert evtl. bereits.", e);
+            }
 
             // ===========================
             // NPCS (für Lobby-/Spigot-Plugin)

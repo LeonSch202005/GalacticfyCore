@@ -18,7 +18,10 @@ public class ReportService {
             String reason,
             String serverName,
             String presetKey,
-            LocalDateTime createdAt
+            LocalDateTime createdAt,
+            boolean handled,
+            String handledBy,
+            LocalDateTime handledAt
     ) {}
 
     private final DatabaseManager db;
@@ -44,8 +47,8 @@ public class ReportService {
 
         String sql = """
                 INSERT INTO gf_reports
-                (created_at, reporter_name, target_name, server_name, reason, preset_key)
-                VALUES (CURRENT_TIMESTAMP, ?, ?, ?, ?, ?)
+                (created_at, reporter_name, target_name, server_name, reason, preset_key, handled, handled_by, handled_at)
+                VALUES (CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, 0, NULL, NULL)
                 """;
 
         try (Connection con = db.getConnection();
@@ -78,7 +81,8 @@ public class ReportService {
         if (targetName == null || targetName.isBlank()) return out;
 
         String sql = """
-                SELECT id, created_at, reporter_name, target_name, server_name, reason, preset_key
+                SELECT id, created_at, reporter_name, target_name, server_name, reason, preset_key,
+                       handled, handled_by, handled_at
                 FROM gf_reports
                 WHERE LOWER(target_name) = ?
                 ORDER BY created_at DESC, id DESC
@@ -106,7 +110,8 @@ public class ReportService {
         List<ReportEntry> out = new ArrayList<>();
 
         String sql = """
-                SELECT id, created_at, reporter_name, target_name, server_name, reason, preset_key
+                SELECT id, created_at, reporter_name, target_name, server_name, reason, preset_key,
+                       handled, handled_by, handled_at
                 FROM gf_reports
                 ORDER BY created_at DESC, id DESC
                 """;
@@ -124,6 +129,65 @@ public class ReportService {
         }
 
         return out;
+    }
+
+    // ============================================================
+    // OFFENE REPORTS LADEN
+    // ============================================================
+
+    public List<ReportEntry> getOpenReports() {
+        List<ReportEntry> out = new ArrayList<>();
+
+        String sql = """
+                SELECT id, created_at, reporter_name, target_name, server_name, reason, preset_key,
+                       handled, handled_by, handled_at
+                FROM gf_reports
+                WHERE handled = 0
+                ORDER BY created_at ASC, id ASC
+                """;
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                out.add(mapEntry(rs));
+            }
+
+        } catch (SQLException e) {
+            logger.error("Fehler beim Laden der offenen Reports", e);
+        }
+
+        return out;
+    }
+
+    // ============================================================
+    // REPORT ALS BEARBEITET MARKIEREN
+    // ============================================================
+
+    public boolean markReportHandled(long id, String staffName) {
+        String sql = """
+                UPDATE gf_reports
+                SET handled = 1,
+                    handled_by = ?,
+                    handled_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                  AND handled = 0
+                """;
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, (staffName != null && !staffName.isBlank()) ? staffName : "Unbekannt");
+            ps.setLong(2, id);
+
+            int updated = ps.executeUpdate();
+            return updated > 0;
+
+        } catch (SQLException e) {
+            logger.error("Fehler beim Markieren eines Reports als bearbeitet (id={})", id, e);
+            return false;
+        }
     }
 
     // ============================================================
@@ -146,6 +210,23 @@ public class ReportService {
         }
         return 0;
     }
+    public int countOpenReports() {
+        String sql = "SELECT COUNT(*) FROM gf_reports WHERE handled = 0";
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            if (rs.next()) {
+                return rs.getInt(1);
+            }
+
+        } catch (SQLException e) {
+            logger.error("Fehler bei countOpenReports()", e);
+        }
+        return 0;
+    }
+
 
     public boolean clearReportsFor(String targetName) {
         if (targetName == null || targetName.isBlank()) return false;
@@ -225,6 +306,22 @@ public class ReportService {
         String reason = rs.getString("reason");
         String presetKey = rs.getString("preset_key");
 
+        boolean handled = false;
+        String handledBy = null;
+        LocalDateTime handledAt = null;
+
+        // Falls Spalten existieren (sollten sie laut Migration)
+        try {
+            handled = rs.getBoolean("handled");
+            handledBy = rs.getString("handled_by");
+            Timestamp tsHandled = rs.getTimestamp("handled_at");
+            if (tsHandled != null) {
+                handledAt = tsHandled.toLocalDateTime();
+            }
+        } catch (SQLException ignored) {
+            // falls alte DB ohne Spalten – dann einfach default lassen
+        }
+
         return new ReportEntry(
                 id,
                 target,
@@ -232,7 +329,10 @@ public class ReportService {
                 reason,
                 server,
                 presetKey,
-                created
+                created,
+                handled,
+                handledBy,
+                handledAt
         );
     }
 }

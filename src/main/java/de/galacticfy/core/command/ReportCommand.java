@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 public class ReportCommand implements SimpleCommand {
 
     private static final String PERM_REPORT_VIEW  = "galacticfy.report.view";   // check/list + Join-Info
-    private static final String PERM_REPORT_CLEAR = "galacticfy.report.clear";  // clear/all
+    private static final String PERM_REPORT_CLEAR = "galacticfy.report.clear";  // clear/all + handle
 
     private final ProxyServer proxy;
     private final GalacticfyPermissionService perms;
@@ -102,6 +102,15 @@ public class ReportCommand implements SimpleCommand {
                 return;
             }
             handleClear(src, args);
+            return;
+        }
+
+        if (first.equals("handle")) {
+            if (!canClearReports(src)) {
+                src.sendMessage(prefix().append(Component.text("§cDazu hast du keine Berechtigung.")));
+                return;
+            }
+            handleHandle(src, args);
             return;
         }
 
@@ -234,11 +243,17 @@ public class ReportCommand implements SimpleCommand {
                         ? " §8[§b" + entry.presetKey() + "§8]"
                         : "";
 
+                String handledPart = entry.handled()
+                        ? " §8[§aBearbeitet§8" +
+                        (entry.handledBy() != null ? " §7von §f" + entry.handledBy() : "") +
+                        "§8]"
+                        : "";
+
                 src.sendMessage(Component.text(
                         "§8• §7Am §f" + time +
                                 " §8| §7Von: §f" + entry.reporterName() +
                                 " §8| §7Server: §f" + (entry.serverName() != null ? entry.serverName() : "Unbekannt") +
-                                presetPart +
+                                presetPart + handledPart +
                                 "\n    §7Grund: §f" + entry.reason()
                 ));
             }
@@ -249,11 +264,11 @@ public class ReportCommand implements SimpleCommand {
     }
 
     // =====================================================================================
-    // /report list
+    // /report list  (nur offene Reports)
     // =====================================================================================
 
     private void handleList(CommandSource src) {
-        List<ReportEntry> all = reportService.getAllReports();
+        List<ReportEntry> all = reportService.getOpenReports();
 
         src.sendMessage(Component.text(" "));
         src.sendMessage(Component.text(PunishDesign.LINE));
@@ -275,7 +290,7 @@ public class ReportCommand implements SimpleCommand {
                     : "";
 
             src.sendMessage(Component.text(
-                    "§8• §c" + entry.targetName() + " §7(" + time + ") " +
+                    "§8#§e" + entry.id() + " §8• §c" + entry.targetName() + " §7(" + time + ") " +
                             "§8| §7Von: §f" + entry.reporterName() +
                             " §8| §7Server: §f" + (entry.serverName() != null ? entry.serverName() : "Unbekannt") +
                             presetPart +
@@ -285,6 +300,44 @@ public class ReportCommand implements SimpleCommand {
 
         src.sendMessage(Component.text(PunishDesign.LINE));
         src.sendMessage(Component.text(" "));
+    }
+
+    // =====================================================================================
+    // /report handle <ID>
+    // =====================================================================================
+
+    private void handleHandle(CommandSource src, String[] args) {
+        if (args.length < 2) {
+            src.sendMessage(prefix().append(Component.text(
+                    "§eBenutzung: §b/report handle <ID>"
+            )));
+            return;
+        }
+
+        long id;
+        try {
+            id = Long.parseLong(args[1]);
+        } catch (NumberFormatException e) {
+            src.sendMessage(prefix().append(Component.text(
+                    "§cUngültige ID: §7" + args[1]
+            )));
+            return;
+        }
+
+        String staffName = (src instanceof Player p) ? p.getUsername() : "Konsole";
+
+        boolean success = reportService.markReportHandled(id, staffName);
+
+        if (!success) {
+            src.sendMessage(prefix().append(Component.text(
+                    "§cReport mit ID §e#" + id + " §cexistiert nicht oder ist bereits bearbeitet."
+            )));
+            return;
+        }
+
+        src.sendMessage(prefix().append(Component.text(
+                "§aReport §e#" + id + " §awurde als bearbeitet markiert."
+        )));
     }
 
     // =====================================================================================
@@ -345,6 +398,8 @@ public class ReportCommand implements SimpleCommand {
             src.sendMessage(Component.text("   §7Zeigt alle Reports für einen Spieler."));
             src.sendMessage(Component.text("§8» §b/report list"));
             src.sendMessage(Component.text("   §7Zeigt alle offenen Reports."));
+            src.sendMessage(Component.text("§8» §b/report handle <ID>"));
+            src.sendMessage(Component.text("   §7Markiert einen Report als bearbeitet."));
             src.sendMessage(Component.text("§8» §b/report clear <Spieler|all>"));
             src.sendMessage(Component.text("   §7Löscht Reports für einen Spieler oder alle."));
             src.sendMessage(Component.text(" "));
@@ -375,6 +430,7 @@ public class ReportCommand implements SimpleCommand {
                 out.add("list");
                 if (staffClear) {
                     out.add("clear");
+                    out.add("handle");
                 }
             }
 
@@ -393,7 +449,7 @@ public class ReportCommand implements SimpleCommand {
             List<String> out = new ArrayList<>();
 
             if (staffView) {
-                for (String sub : List.of("check", "list", "clear")) {
+                for (String sub : List.of("check", "list", "clear", "handle")) {
                     if (sub.startsWith(first)) {
                         out.add(sub);
                     }
@@ -451,10 +507,22 @@ public class ReportCommand implements SimpleCommand {
                     .collect(Collectors.toList());
         }
 
+        // /report handle <ID> → offene IDs vorschlagen
+        if (args.length == 2 && args[0].equalsIgnoreCase("handle") && staffClear) {
+            String prefix = args[1];
+            return reportService.getOpenReports().stream()
+                    .map(e -> String.valueOf(e.id()))
+                    .filter(id -> id.startsWith(prefix))
+                    .distinct()
+                    .sorted()
+                    .collect(Collectors.toList());
+        }
+
         // /report <Spieler> <Grund/Preset...>
         if (args.length >= 2 && !args[0].equalsIgnoreCase("check")
                 && !args[0].equalsIgnoreCase("list")
-                && !args[0].equalsIgnoreCase("clear")) {
+                && !args[0].equalsIgnoreCase("clear")
+                && !args[0].equalsIgnoreCase("handle")) {
 
             String prefix = args[args.length - 1].toLowerCase(Locale.ROOT);
 
@@ -470,7 +538,7 @@ public class ReportCommand implements SimpleCommand {
 
     @Override
     public boolean hasPermission(Invocation invocation) {
-        // /report soll für JEDEN Tabbar sein → Permission nicht beschränken
+        // /report soll für JEDEN sichtbar/tabbar sein → Permission nicht beschränken
         return true;
     }
 }
