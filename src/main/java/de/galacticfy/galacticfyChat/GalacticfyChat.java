@@ -111,7 +111,7 @@ public class GalacticfyChat extends JavaPlugin {
     }
 
     public SimpleRankService getRankService() {
-        return rankService;
+        return rankService;//test
     }
 
     public GlobalScoreboardService getScoreboardService() {
