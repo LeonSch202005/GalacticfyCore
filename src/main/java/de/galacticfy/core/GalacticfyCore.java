@@ -39,8 +39,8 @@ public class GalacticfyCore {
     private PunishmentService punishmentService;
     private ReportService reportService;
 
-    // 🔹 Neu: MessageService für Broadcast/Alert/Announce
     private MessageService messageService;
+    private AutoBroadcastService autoBroadcastService;
 
     @Inject
     public GalacticfyCore(ProxyServer proxy, Logger logger) {
@@ -52,25 +52,35 @@ public class GalacticfyCore {
     public void onProxyInitialization(ProxyInitializeEvent event) {
         logger.info("GalacticfyCore wird initialisiert...");
 
+        // ==============================
         // DB
+        // ==============================
         this.databaseManager = new DatabaseManager(logger);
         this.databaseManager.init();
         new DatabaseMigrationService(databaseManager, logger).runMigrations();
 
+        // ==============================
         // Services
+        // ==============================
         this.teleportService = new ServerTeleportService(proxy, logger);
         this.maintenanceService = new MaintenanceService(logger, databaseManager);
+
         this.permissionService = new GalacticfyPermissionService(databaseManager, logger);
         this.punishmentService = new PunishmentService(databaseManager, logger);
         this.reportService = new ReportService(databaseManager, logger);
+
         this.messageService = new MessageService(proxy, logger);
+        this.autoBroadcastService = new AutoBroadcastService(proxy, messageService, logger, this);
+        autoBroadcastService.start();
 
         String webhookUrl = "https://discord.com/api/webhooks/1443274192542765168/aHgrQP2ADryVWfhdoW5dcP7Vd8J_YU9aOkjEVkYNlVc-4wLEnAs-E5e-IfJg0fBwN8dJ";
         this.discordNotifier = new DiscordWebhookNotifier(logger, webhookUrl);
 
         CommandManager commandManager = proxy.getCommandManager();
 
-        // ===== Teleport-Commands (unverändert) =====
+        // ==============================
+        // Teleport-Commands
+        // ==============================
         CommandMeta hubMeta = commandManager.metaBuilder("hub")
                 .aliases("lobby", "spawn")
                 .build();
@@ -92,7 +102,9 @@ public class GalacticfyCore {
         CommandMeta sendMeta = commandManager.metaBuilder("send").build();
         commandManager.register(sendMeta, new SendCommand(proxy, teleportService, permissionService));
 
-        // ===== Maintenance =====
+        // ==============================
+        // Maintenance (EN / DE Layout)
+        // ==============================
         CommandMeta maintenanceMeta = commandManager.metaBuilder("maintenance").build();
         commandManager.register(
                 maintenanceMeta,
@@ -105,11 +117,15 @@ public class GalacticfyCore {
                 new MaintenanceCommand(maintenanceService, proxy, discordNotifier, true, permissionService)
         );
 
-        // ===== Rank =====
+        // ==============================
+        // Rank / Rollen-Verwaltung
+        // ==============================
         CommandMeta rankMeta = commandManager.metaBuilder("rank").build();
         commandManager.register(rankMeta, new RankCommand(permissionService, proxy));
 
-        // ===== Punishment-Commands (wie vorher) =====
+        // ==============================
+        // Punishment-Commands
+        // ==============================
         CommandMeta banMeta = commandManager.metaBuilder("ban").build();
         commandManager.register(
                 banMeta,
@@ -176,6 +192,30 @@ public class GalacticfyCore {
                 new ReportCommand(proxy, permissionService, reportService)
         );
 
+        // ==============================
+        // NEW: Broadcast / Alert / Announce
+        // ==============================
+        CommandMeta alertMeta = commandManager.metaBuilder("alert").build();
+        commandManager.register(
+                alertMeta,
+                new AlertCommand(messageService, permissionService)
+        );
+
+        CommandMeta announceMeta = commandManager.metaBuilder("announce").build();
+        commandManager.register(
+                announceMeta,
+                new AnnounceCommand(messageService, permissionService)
+        );
+
+        CommandMeta broadcastMeta = commandManager.metaBuilder("broadcast")
+                .aliases("bc")
+                .build();
+        commandManager.register(
+                broadcastMeta,
+                new BroadcastCommand(messageService, permissionService)
+        );
+
+        // Staffchat
         CommandMeta staffMeta = commandManager.metaBuilder("staffchat")
                 .aliases("sc")
                 .build();
@@ -190,28 +230,9 @@ public class GalacticfyCore {
                 new UnwarnCommand(proxy, permissionService, punishmentService)
         );
 
-        // ===== 🔹 Neue Broadcast-Commands =====
-        CommandMeta broadcastMeta = commandManager.metaBuilder("broadcast")
-                .aliases("bc")
-                .build();
-        commandManager.register(
-                broadcastMeta,
-                new BroadcastCommand(messageService, permissionService)
-        );
-
-        CommandMeta alertMeta = commandManager.metaBuilder("alert").build();
-        commandManager.register(
-                alertMeta,
-                new AlertCommand(messageService, permissionService)
-        );
-
-        CommandMeta announceMeta = commandManager.metaBuilder("announce").build();
-        commandManager.register(
-                announceMeta,
-                new AnnounceCommand(messageService, permissionService)
-        );
-
-        // ===== Listener =====
+        // ==============================
+        // Listener
+        // ==============================
         proxy.getEventManager().register(this,
                 new ConnectionProtectionListener(logger, proxy, maintenanceService));
 
@@ -230,12 +251,16 @@ public class GalacticfyCore {
         proxy.getEventManager().register(this,
                 new PunishmentLoginListener(punishmentService, logger, proxy, permissionService));
 
-        logger.info("GalacticfyCore 0.4.5: Commands, Listener, Punishment-, Report- & Broadcast-System registriert.");
+        logger.info("GalacticfyCore: Commands, Listener, Punishment-, Report- & AutoBroadcast-System registriert.");
     }
 
     @Subscribe
     public void onProxyShutdown(ProxyShutdownEvent event) {
         logger.info("GalacticfyCore fährt herunter, schließe Ressourcen...");
+
+        if (autoBroadcastService != null) {
+            autoBroadcastService.shutdown();
+        }
 
         if (maintenanceService != null) {
             maintenanceService.shutdown();
