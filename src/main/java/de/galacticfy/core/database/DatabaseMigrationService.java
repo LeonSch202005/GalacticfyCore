@@ -8,7 +8,7 @@ import java.sql.Statement;
 
 /**
  * Legt Tabellen für Rollen, User-Rollen, Permissions, Inheritance,
- * Maintenance-Konfiguration, Punishments und Reports an.
+ * Maintenance-Konfiguration, Punishments, Reports und NPCs an.
  */
 public class DatabaseMigrationService {
 
@@ -136,6 +136,28 @@ public class DatabaseMigrationService {
                         preset_key   VARCHAR(64),
                         INDEX idx_reports_target (target_name),
                         INDEX idx_reports_created_at (created_at)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                    """);
+
+            // ===========================
+            // NPCS (für Lobby-/Spigot-Plugin)
+            // Gemeinsames Schema für GalacticfyCore + GalacticfyChat
+            // ===========================
+            st.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS gf_npcs (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        server_name  VARCHAR(64) NOT NULL,   -- z.B. "Lobby-1"
+                        name         VARCHAR(64) NOT NULL,   -- Anzeigename über dem Kopf
+                        world        VARCHAR(64) NOT NULL,
+                        x            DOUBLE NOT NULL,
+                        y            DOUBLE NOT NULL,
+                        z            DOUBLE NOT NULL,
+                        yaw          FLOAT NOT NULL,
+                        pitch        FLOAT NOT NULL,
+                        type         VARCHAR(32) NOT NULL,   -- z.B. SERVER_SELECTOR, INFO, ...
+                        target_server VARCHAR(64) NULL,      -- z.B. "Citybuild-1"
+                        skin_uuid    CHAR(36) NULL,
+                        created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                     """);
 

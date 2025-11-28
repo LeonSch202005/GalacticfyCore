@@ -193,7 +193,7 @@ public class GalacticfyCore {
         );
 
         // ==============================
-        // NEW: Broadcast / Alert / Announce
+        // Broadcast / Alert / Announce
         // ==============================
         CommandMeta alertMeta = commandManager.metaBuilder("alert").build();
         commandManager.register(
@@ -251,7 +251,7 @@ public class GalacticfyCore {
         proxy.getEventManager().register(this,
                 new PunishmentLoginListener(punishmentService, logger, proxy, permissionService));
 
-        logger.info("GalacticfyCore: Commands, Listener, Punishment-, Report- & AutoBroadcast-System registriert.");
+        logger.info("GalacticfyCore: Commands, Listener, Punishment-, Report-, AutoBroadcast- & NPC-System registriert.");
     }
 
     @Subscribe
@@ -277,7 +277,6 @@ public class GalacticfyCore {
         if (punishmentService != null) {
             punishmentService.shutdown();
         }
-
         logger.info("GalacticfyCore: Shutdown abgeschlossen.");
     }
 }
