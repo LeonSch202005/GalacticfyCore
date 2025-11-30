@@ -77,23 +77,70 @@ public class SessionService {
         }
     }
 
-    public void onLogout(UUID uuid) {
-        String sql = """
-                UPDATE gf_sessions
-                SET last_logout = CURRENT_TIMESTAMP,
-                    total_play_seconds = total_play_seconds + TIMESTAMPDIFF(SECOND, last_login, CURRENT_TIMESTAMP)
+    /**
+     * Wird beim Logout aufgerufen.
+     *
+     * Aktualisiert:
+     *  - last_logout
+     *  - total_play_seconds += Sessiondauer
+     *
+     * @return gespielte Minuten dieser Session
+     */
+    public long onLogout(UUID uuid) {
+        if (uuid == null) return 0L;
+
+        String select = """
+                SELECT TIMESTAMPDIFF(SECOND, last_login, CURRENT_TIMESTAMP) AS session_seconds
+                FROM gf_sessions
                 WHERE uuid = ?
                 """;
 
-        try (Connection con = db.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+        String update = """
+                UPDATE gf_sessions
+                SET last_logout = CURRENT_TIMESTAMP,
+                    total_play_seconds = total_play_seconds + ?
+                WHERE uuid = ?
+                """;
 
-            ps.setString(1, uuid.toString());
-            ps.executeUpdate();
+        long sessionSeconds = 0L;
+
+        try (Connection con = db.getConnection()) {
+
+            // Sessiondauer ausrechnen
+            try (PreparedStatement ps = con.prepareStatement(select)) {
+                ps.setString(1, uuid.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        sessionSeconds = rs.getLong("session_seconds");
+                        if (sessionSeconds < 0) {
+                            // Sicherheitsnetz falls last_login in Zukunft liegt
+                            sessionSeconds = 0L;
+                        }
+                    }
+                }
+            }
+
+            // Wenn wir keine Daten haben, einfach nichts updaten
+            if (sessionSeconds <= 0) {
+                return 0L;
+            }
+
+            // total_play_seconds erhöhen + last_logout setzen
+            try (PreparedStatement ps = con.prepareStatement(update)) {
+                ps.setLong(1, sessionSeconds);
+                ps.setString(2, uuid.toString());
+                ps.executeUpdate();
+            }
 
         } catch (SQLException e) {
             logger.error("Fehler beim Session-Logout-Update für {}", uuid, e);
+            return 0L;
         }
+
+        long minutes = sessionSeconds / 60L;
+        logger.debug("SessionService: Logout {} – SessionSekunden={}, Minuten={}",
+                uuid, sessionSeconds, minutes);
+        return minutes;
     }
 
     public SessionInfo getSession(UUID uuid) {

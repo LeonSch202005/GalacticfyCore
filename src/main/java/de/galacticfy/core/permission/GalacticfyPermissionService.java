@@ -820,6 +820,16 @@ public class GalacticfyPermissionService {
 
         logger.info("GalacticfyPermissionService: Reload abgeschlossen.");
     }
+    public boolean hasConsoleOrPluginPerm(CommandSource src, String permission) {
+        // Konsole / Proxy-Intern: immer erlaubt
+        if (!(src instanceof Player)) {
+            return true;
+        }
+
+        // Spieler → ganz normal dein Plugin-Permissionsystem benutzen
+        return hasPluginPermission(src, permission);
+    }
+
 
 
 

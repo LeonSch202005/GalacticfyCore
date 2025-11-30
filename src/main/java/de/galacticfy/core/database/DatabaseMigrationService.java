@@ -8,7 +8,7 @@ import java.sql.Statement;
 
 /**
  * Legt Tabellen für Rollen, User-Rollen, Permissions, Inheritance,
- * Maintenance-Konfiguration, Punishments, Reports und NPCs an.
+ * Maintenance-Konfiguration, Punishments, Reports, Economy, Sessions, Daily-Rewards und NPCs an.
  */
 public class DatabaseMigrationService {
 
@@ -79,23 +79,60 @@ public class DatabaseMigrationService {
                     """);
 
             // ===========================
-// SESSIONS (/seen, /check)
-// ===========================
+            // SESSIONS (/seen, /check)
+            // ===========================
             st.executeUpdate("""
-        CREATE TABLE IF NOT EXISTS gf_sessions (
-            id BIGINT AUTO_INCREMENT PRIMARY KEY,
-            uuid CHAR(36) NOT NULL,
-            name VARCHAR(16) NOT NULL,
-            first_login TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            last_login  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            last_logout TIMESTAMP NULL DEFAULT NULL,
-            total_play_seconds BIGINT NOT NULL DEFAULT 0,
-            last_server VARCHAR(64) NULL,
-            INDEX idx_sessions_uuid (uuid),
-            INDEX idx_sessions_name (name)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-        """);
+                    CREATE TABLE IF NOT EXISTS gf_sessions (
+                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                        uuid CHAR(36) NOT NULL,
+                        name VARCHAR(16) NOT NULL,
+                        first_login TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        last_login  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        last_logout TIMESTAMP NULL DEFAULT NULL,
+                        total_play_seconds BIGINT NOT NULL DEFAULT 0,
+                        last_server VARCHAR(64) NULL,
+                        INDEX idx_sessions_uuid (uuid),
+                        INDEX idx_sessions_name (name)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                    """);
 
+            // ===========================
+            // GLOBAL ECONOMY (Galas + Stardust)
+            // ===========================
+            st.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS gf_economy (
+                        uuid CHAR(36) NOT NULL PRIMARY KEY,
+                        name VARCHAR(16) NOT NULL,
+                        balance BIGINT NOT NULL DEFAULT 0,      -- Galas
+                        stardust BIGINT NOT NULL DEFAULT 0,     -- Premium: Stardust ✧
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                            ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                    """);
+
+            // Falls gf_economy schon existiert aber noch kein 'stardust' hat → nachziehen
+            try {
+                st.executeUpdate("""
+                        ALTER TABLE gf_economy
+                            ADD COLUMN IF NOT EXISTS stardust BIGINT NOT NULL DEFAULT 0
+                        """);
+            } catch (SQLException e) {
+                logger.debug("gf_economy: Spalte 'stardust' existiert evtl. bereits.", e);
+            }
+
+            // ===========================
+            // DAILY REWARDS
+            // ===========================
+            st.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS gf_daily_rewards (
+                        uuid CHAR(36) NOT NULL PRIMARY KEY,
+                        name VARCHAR(16) NOT NULL,
+                        last_claim_date DATE NOT NULL,
+                        streak INT NOT NULL DEFAULT 1,
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                            ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                    """);
 
             // ===========================
             // MAINTENANCE CONFIG
@@ -119,6 +156,40 @@ public class DatabaseMigrationService {
                         group_name VARCHAR(64) NOT NULL PRIMARY KEY
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                     """);
+
+            // ===========================
+// QUESTS (Definitionen)
+// ===========================
+            st.executeUpdate("""
+        CREATE TABLE IF NOT EXISTS gf_quests (
+            quest_key      VARCHAR(64) NOT NULL PRIMARY KEY,
+            title          VARCHAR(128) NOT NULL,
+            description    TEXT NOT NULL,
+            type           VARCHAR(32) NOT NULL, -- z.B. PLAYTIME_MINUTES, DAILY_LOGIN, EARN_GALAS
+            goal           BIGINT NOT NULL,
+            reward_galas   BIGINT NOT NULL DEFAULT 0,
+            reward_stardust BIGINT NOT NULL DEFAULT 0,
+            active         TINYINT(1) NOT NULL DEFAULT 1,
+            created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        """);
+
+// ===========================
+// QUEST PROGRESS (pro Spieler)
+// ===========================
+            st.executeUpdate("""
+        CREATE TABLE IF NOT EXISTS gf_quest_progress (
+            uuid         CHAR(36) NOT NULL,
+            quest_key    VARCHAR(64) NOT NULL,
+            progress     BIGINT NOT NULL DEFAULT 0,
+            completed    TINYINT(1) NOT NULL DEFAULT 0,
+            completed_at TIMESTAMP NULL DEFAULT NULL,
+            last_update  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (uuid, quest_key),
+            FOREIGN KEY (quest_key) REFERENCES gf_quests(quest_key) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        """);
 
             // ===========================
             // PUNISHMENTS (Bans + Mutes + Kicks + Warns + IP-Bans)
@@ -162,7 +233,7 @@ public class DatabaseMigrationService {
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                     """);
 
-            // für bereits existierende Tabellen ohne Spalten: nachziehen
+            // für bereits existierende gf_reports Tabellen: Spalten nachziehen
             try {
                 st.executeUpdate("""
                         ALTER TABLE gf_reports

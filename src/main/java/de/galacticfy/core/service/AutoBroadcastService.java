@@ -19,10 +19,10 @@ public class AutoBroadcastService {
 
     private ScheduledTask task;
 
-    // Produktivwerte
-    private static final int MIN_PLAYERS_FOR_BROADCAST = 5;
-    private static final Duration FIRST_DELAY  = Duration.ofMinutes(10);
-    private static final Duration INTERVAL     = Duration.ofMinutes(15);
+    // Standardwerte (kann per Command geändert werden)
+    private int minPlayersForBroadcast = 1;                       // Mindestspieler
+    private Duration firstDelay = Duration.ofMinutes(1);         // Delay vor der ersten Nachricht
+    private Duration interval = Duration.ofMinutes(15);           // Abstand zwischen Nachrichten
 
     private final List<String> messages = new ArrayList<>();
     private final Random random = new Random();
@@ -63,8 +63,14 @@ public class AutoBroadcastService {
         messages.add("Bleibe am Ball! Bald erscheinen neue Inhalte und Features.");
     }
 
+    // ============================================================
+    // START / STOP / STATUS
+    // ============================================================
+
     public void start() {
-        if (task != null) return;
+        if (task != null) {
+            return; // läuft schon
+        }
 
         if (messages.isEmpty()) {
             logger.warn("AutoBroadcastService gestartet, aber keine Nachrichten definiert.");
@@ -75,15 +81,15 @@ public class AutoBroadcastService {
 
         this.task = proxy.getScheduler()
                 .buildTask(pluginInstance, this::sendNext)
-                .delay(FIRST_DELAY)
-                .repeat(INTERVAL)
+                .delay(firstDelay)
+                .repeat(interval)
                 .schedule();
 
         logger.info(
                 "AutoBroadcastService gestartet ({} Nachrichten, Intervall {} Minuten, Mindestspieler: {}).",
                 messages.size(),
-                INTERVAL.toMinutes(),
-                MIN_PLAYERS_FOR_BROADCAST
+                interval.toMinutes(),
+                minPlayersForBroadcast
         );
     }
 
@@ -95,6 +101,14 @@ public class AutoBroadcastService {
         }
     }
 
+    public boolean isRunning() {
+        return task != null;
+    }
+
+    // ============================================================
+    // INTERN: Shufflen & Senden
+    // ============================================================
+
     private void reshufflePool() {
         shuffledPool = new ArrayList<>(messages);
         Collections.shuffle(shuffledPool, random);
@@ -104,9 +118,11 @@ public class AutoBroadcastService {
     private void sendNext() {
         int online = proxy.getPlayerCount();
 
-        if (online < MIN_PLAYERS_FOR_BROADCAST) {
-            logger.debug("AutoBroadcast übersprungen ({} Spieler online, Minimum {}).",
-                    online, MIN_PLAYERS_FOR_BROADCAST);
+        if (online < minPlayersForBroadcast) {
+            logger.debug(
+                    "AutoBroadcast übersprungen ({} Spieler online, Minimum {}).",
+                    online, minPlayersForBroadcast
+            );
             return;
         }
 
@@ -118,13 +134,71 @@ public class AutoBroadcastService {
         messageService.announce("§7" + msg);
     }
 
+    // ============================================================
+    // API für Commands
+    // ============================================================
+
     public void addMessage(String message) {
         if (message == null || message.isBlank()) return;
         messages.add(message);
         reshufflePool();
     }
 
+    public boolean removeMessage(int index) {
+        if (index < 0 || index >= messages.size()) return false;
+        messages.remove(index);
+        reshufflePool();
+        return true;
+    }
+
     public List<String> getMessages() {
         return List.copyOf(messages);
+    }
+
+    public int getMinPlayersForBroadcast() {
+        return minPlayersForBroadcast;
+    }
+
+    public void setMinPlayersForBroadcast(int minPlayersForBroadcast) {
+        if (minPlayersForBroadcast < 1) {
+            minPlayersForBroadcast = 1;
+        }
+        this.minPlayersForBroadcast = minPlayersForBroadcast;
+        logger.info("AutoBroadcast: Mindestspieler auf {} gesetzt.", this.minPlayersForBroadcast);
+    }
+
+    public Duration getInterval() {
+        return interval;
+    }
+
+    public void setInterval(Duration interval) {
+        if (interval == null || interval.isNegative() || interval.isZero()) {
+            return;
+        }
+        this.interval = interval;
+        logger.info("AutoBroadcast: Intervall auf {} Minuten gesetzt.", interval.toMinutes());
+
+        // Neu planen, wenn aktuell läuft
+        if (isRunning()) {
+            shutdown();
+            start();
+        }
+    }
+
+    public Duration getFirstDelay() {
+        return firstDelay;
+    }
+
+    public void setFirstDelay(Duration firstDelay) {
+        if (firstDelay == null || firstDelay.isNegative() || firstDelay.isZero()) {
+            return;
+        }
+        this.firstDelay = firstDelay;
+        logger.info("AutoBroadcast: First-Delay auf {} Minuten gesetzt.", firstDelay.toMinutes());
+
+        if (isRunning()) {
+            shutdown();
+            start();
+        }
     }
 }
