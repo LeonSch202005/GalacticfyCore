@@ -18,7 +18,12 @@ import de.galacticfy.core.motd.GalacticfyMotdProvider;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
 import de.galacticfy.core.service.*;
 import de.galacticfy.core.util.DiscordWebhookNotifier;
+import net.kyori.adventure.text.Component;
 import org.slf4j.Logger;
+
+import java.time.Duration;
+import java.util.UUID;
+import java.util.function.BiConsumer;
 
 @Plugin(
         id = "galacticfycore",
@@ -50,10 +55,13 @@ public class GalacticfyCore {
     private MessageService messageService;
     private AutoBroadcastService autoBroadcastService;
 
-    // Plugin-Message-Channel für Quest-GUI
+    // Plugin-Message-Channel für Quest-GUI (Proxy -> Spigot UND CLAIM zurück)
     private static final ChannelIdentifier QUESTS_CHANNEL =
             MinecraftChannelIdentifier.create("galacticfy", "quests");
 
+    // Plugin-Message-Channel für Quest-Stats (von Spigot)
+    private static final ChannelIdentifier QUESTS_STATS_CHANNEL =
+            MinecraftChannelIdentifier.create("galacticfy", "queststats");
 
     private QuestGuiMessenger questGuiMessenger;
 
@@ -94,13 +102,31 @@ public class GalacticfyCore {
         this.autoBroadcastService = new AutoBroadcastService(proxy, messageService, logger, this);
         autoBroadcastService.start();
 
-        // Quests + GUI
-        this.questService      = new QuestService(logger, economyService);
+        // ==============================
+        // Quests + GUI (OHNE Community)
+        // ==============================
+        this.questService = new QuestService(logger, economyService, databaseManager);
         this.questGuiMessenger = new QuestGuiMessenger(proxy, QUESTS_CHANNEL, logger, questService);
 
-
-// Live-Updates aktivieren
+        // Live-Updates aktivieren (Proxy → Spigot)
         this.questService.setUpdateHook(uuid -> questGuiMessenger.pushUpdate(uuid));
+
+        // Quest-Playtime-Timer: jede Minute allen Online-Spielern 1 Minute gutschreiben
+        proxy.getScheduler()
+                .buildTask(this, () -> {
+                    proxy.getAllPlayers().forEach(player -> {
+                        UUID uuid = player.getUniqueId();
+                        String name = player.getUsername();
+
+                        BiConsumer<UUID, Component> sender =
+                                (u, comp) -> proxy.getPlayer(u).ifPresent(p -> p.sendMessage(comp));
+
+                        // 1 Minute Spielzeit hinzufügen → triggert Daily/Weekly/Monthly-Quests
+                        questService.handlePlaytime(uuid, name, 1L, sender);
+                    });
+                })
+                .repeat(Duration.ofMinutes(1))
+                .schedule();
 
         String webhookUrl = "https://discord.com/api/webhooks/1443274192542765168/aHgrQP2ADryVWfhdoW5dcP7Vd8J_YU9aOkjEVkYNlVc-4wLEnAs-E5e-IfJg0fBwN8dJ";
         this.discordNotifier = new DiscordWebhookNotifier(logger, webhookUrl);
@@ -110,6 +136,7 @@ public class GalacticfyCore {
         // ==============================
         proxy.getChannelRegistrar().register(FreezeService.FREEZE_CHANNEL);
         proxy.getChannelRegistrar().register(QUESTS_CHANNEL);
+        proxy.getChannelRegistrar().register(QUESTS_STATS_CHANNEL);
 
         CommandManager commandManager = proxy.getCommandManager();
 
@@ -117,7 +144,7 @@ public class GalacticfyCore {
         // Quest-Command
         // ==============================
         CommandMeta questsMeta = commandManager.metaBuilder("quests").build();
-        commandManager.register(questsMeta, new QuestCommand(questService, questGuiMessenger));
+        commandManager.register(questsMeta, new QuestCommand(questService, questGuiMessenger, proxy));
 
         // ==============================
         // Teleport- & Utility-Commands
@@ -335,7 +362,11 @@ public class GalacticfyCore {
         proxy.getEventManager().register(this,
                 new SessionListener(sessionService, questService, logger));
 
-        logger.info("GalacticfyCore: Commands, Listener, Punishment-, Report-, Economy-, Daily-, Quests-, AutoBroadcast- & NPC-System registriert.");
+        // Quest-Stat-Listener (für Fischen, Blöcke, etc.)
+        proxy.getEventManager().register(this,
+                new QuestEventListener(questService, QUESTS_STATS_CHANNEL, proxy, logger));
+
+        logger.info("GalacticfyCore: Commands, Listener, Punishment-, Report-, Economy-, Daily- & Questsystem registriert (ohne Community-Quests).");
     }
 
     @Subscribe

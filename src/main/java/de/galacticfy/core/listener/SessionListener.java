@@ -8,7 +8,6 @@ import de.galacticfy.core.service.QuestService;
 import de.galacticfy.core.service.SessionService;
 import net.kyori.adventure.text.Component;
 import org.slf4j.Logger;
-
 import java.util.UUID;
 
 public class SessionListener {
@@ -32,7 +31,8 @@ public class SessionListener {
 
         sessions.onLogin(p.getUniqueId(), p.getUsername(), serverName);
 
-        quests.handleLogin(p.getUniqueId(), p.getUsername(), (uuid, msg) -> sendToPlayer(uuid, msg, p));
+        quests.handleLogin(p.getUniqueId(), p.getUsername(),
+                (uuid, msg) -> sendToPlayer(uuid, msg, p));
     }
 
     @Subscribe
@@ -42,9 +42,9 @@ public class SessionListener {
 
         // SessionService gibt z.B. gespielte Minuten für diese Session zurück
         long minutes = sessions.onLogout(uuid);
-
         if (minutes > 0) {
-            quests.handlePlaytime(uuid, p.getUsername(), minutes, (u, msg) -> sendToPlayer(u, msg, p));
+            quests.handlePlaytime(uuid, p.getUsername(), minutes,
+                    (u, msg) -> sendToPlayer(u, msg, p));
         }
     }
 

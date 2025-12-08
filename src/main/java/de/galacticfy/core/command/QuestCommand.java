@@ -1,15 +1,14 @@
 package de.galacticfy.core.command;
 
+import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.proxy.ProxyServer;
 import de.galacticfy.core.service.QuestGuiMessenger;
 import de.galacticfy.core.service.QuestService;
-import de.galacticfy.core.service.QuestService.PlayerQuestView;
 import net.kyori.adventure.text.Component;
 
-import java.util.List;
-import java.util.Locale;
-import java.util.stream.Collectors;
+import java.util.*;
 
 public class QuestCommand implements SimpleCommand {
 
@@ -17,122 +16,164 @@ public class QuestCommand implements SimpleCommand {
 
     private final QuestService quests;
     private final QuestGuiMessenger guiMessenger;
+    private final ProxyServer proxy;
 
-    public QuestCommand(QuestService quests, QuestGuiMessenger guiMessenger) {
+    public QuestCommand(QuestService quests, QuestGuiMessenger guiMessenger, ProxyServer proxy) {
         this.quests = quests;
         this.guiMessenger = guiMessenger;
+        this.proxy = proxy;
     }
 
     private Component prefix() {
         return Component.text("§8[§dQuests§8] §r");
     }
 
+    private String sourceName(CommandSource source) {
+        if (source instanceof Player p) {
+            return p.getUsername();
+        }
+        return "Konsole";
+    }
+
+    private boolean isAdmin(CommandSource src) {
+        return src.hasPermission(PERM_ADMIN);
+    }
+
     @Override
     public void execute(Invocation invocation) {
-        var src  = invocation.source();
-        var args = invocation.arguments();
+        CommandSource src = invocation.source();
+        String[] args = invocation.arguments();
 
-        // /quests → GUI öffnen
+        // /quests -> GUI öffnen
         if (args.length == 0) {
-            if (!(src instanceof Player p)) {
-                src.sendMessage(prefix().append(Component.text("§cNur Spieler können Quests ansehen.")));
-                return;
+            if (src instanceof Player player) {
+                guiMessenger.openGui(player);
+            } else {
+                src.sendMessage(prefix().append(Component.text("§cNur Ingame-Spieler können das Quest-Menü öffnen.")));
             }
-
-            List<PlayerQuestView> list = quests.getQuestsFor(p.getUniqueId());
-            guiMessenger.openGui(p, list);
-
-            p.sendMessage(prefix().append(Component.text("§7Deine Quests wurden im GUI geöffnet.")));
             return;
         }
 
         String sub = args[0].toLowerCase(Locale.ROOT);
-        boolean admin = hasAdmin(invocation);
 
-        if (sub.equals("reload")) {
-            if (!admin) {
-                src.sendMessage(prefix().append(Component.text("§cDazu hast du keine Berechtigung.")));
-                return;
-            }
-            quests.reloadDefinitions();
-            src.sendMessage(prefix().append(Component.text("§aQuests wurden neu geladen.")));
-            return;
-        }
-
-        if (sub.equals("info") && args.length >= 2) {
-            String key = args[1].toLowerCase(Locale.ROOT);
-            var def = quests.getDefinition(key);
-            if (def == null) {
-                src.sendMessage(prefix().append(Component.text("§cDiese Quest existiert nicht: §f" + key)));
+        switch (sub) {
+            case "help":
+            case "?": {
+                sendHelp(src);
                 return;
             }
 
-            src.sendMessage(Component.text(" "));
-            src.sendMessage(prefix().append(Component.text("§dQuest-Info: §f" + def.title())));
-            src.sendMessage(Component.text(" "));
-            src.sendMessage(Component.text("§7Key: §f" + def.key()));
-            src.sendMessage(Component.text("§7Typ: §f" + def.type().name()));
-            src.sendMessage(Component.text("§7Beschreibung: §f" + def.description()));
-            src.sendMessage(Component.text("§7Ziel: §e" + def.goal()));
-            src.sendMessage(Component.text("§7Belohnung: §e" + def.rewardGalas() + "⛃ §7/ §d" + def.rewardStardust() + "✧"));
-            src.sendMessage(Component.text("§7Aktiv: " + (def.active() ? "§aJa" : "§cNein")));
-            src.sendMessage(Component.text(" "));
-            return;
-        }
+            case "reload": {
+                if (!isAdmin(src)) {
+                    src.sendMessage(prefix().append(Component.text("§cDafür hast du keine Rechte.")));
+                    return;
+                }
 
-        sendUsage(src, admin);
+                quests.reloadDefinitions();
+                src.sendMessage(prefix().append(Component.text("§aQuest-Definitionen wurden neu generiert.")));
+                return;
+            }
+
+            case "reroll": {
+                if (!isAdmin(src)) {
+                    src.sendMessage(prefix().append(Component.text("§cDafür hast du keine Rechte.")));
+                    return;
+                }
+
+                quests.forceRandomRoll();
+                src.sendMessage(prefix().append(Component.text("§aForce-Roll ausgeführt, heutige Quests wurden neu ausgewürfelt.")));
+                return;
+            }
+
+            case "reset": {
+                if (!isAdmin(src)) {
+                    src.sendMessage(prefix().append(Component.text("§cDafür hast du keine Rechte.")));
+                    return;
+                }
+
+                if (args.length < 2) {
+                    src.sendMessage(prefix().append(Component.text("§7Benutzung: §e/quests reset <all|Spieler>")));
+                    return;
+                }
+
+                String target = args[1];
+
+                // /quests reset all
+                if (target.equalsIgnoreCase("all") || target.equalsIgnoreCase("*")) {
+                    quests.resetAllProgress();
+                    src.sendMessage(prefix().append(Component.text("§aAlle Quest-Fortschritte wurden zurückgesetzt.")));
+                    return;
+                }
+
+                // /quests reset <Spieler> (nur Online-Spieler)
+                Optional<Player> opt = proxy.getPlayer(target);
+                if (opt.isEmpty()) {
+                    src.sendMessage(prefix().append(Component.text("§cSpieler §e" + target + " §cwurde nicht gefunden (muss online sein).")));
+                    return;
+                }
+
+                Player player = opt.get();
+                quests.resetProgress(player.getUniqueId());
+                src.sendMessage(prefix().append(Component.text("§aQuest-Fortschritt von §e" + player.getUsername() + " §awurde zurückgesetzt.")));
+                player.sendMessage(prefix().append(Component.text("§cDein Quest-Fortschritt wurde von einem Admin zurückgesetzt.")));
+                return;
+            }
+
+            default: {
+                src.sendMessage(prefix().append(Component.text("§cUnbekannter Unterbefehl. §7Nutze §e/quests help§7.")));
+            }
+        }
     }
 
-    private boolean hasAdmin(Invocation invocation) {
-        var src = invocation.source();
-        if (!(src instanceof Player p)) {
-            return true; // Konsole darf alles
+    private void sendHelp(CommandSource src) {
+        src.sendMessage(prefix().append(Component.text("§d/quests §7- Öffnet das Quest-Menü (nur Spieler)")));
+        if (isAdmin(src)) {
+            src.sendMessage(prefix().append(Component.text("§d/quests reload §7- Daily/Weekly/Monthly/Event neu generieren")));
+            src.sendMessage(prefix().append(Component.text("§d/quests reroll §7- Heutige Quests neu auswürfeln")));
+            src.sendMessage(prefix().append(Component.text("§d/quests reset all §7- Alle Quest-Fortschritte löschen")));
+            src.sendMessage(prefix().append(Component.text("§d/quests reset <Spieler> §7- Fortschritt eines Spielers löschen (online)")));
         }
-        return p.hasPermission(PERM_ADMIN);
-    }
-
-    private void sendUsage(com.velocitypowered.api.command.CommandSource src, boolean admin) {
-        src.sendMessage(Component.text(" "));
-        src.sendMessage(prefix().append(Component.text("§dQuests §7| §dÜbersicht")));
-        src.sendMessage(Component.text(" "));
-        src.sendMessage(Component.text("§8» §d/quests §7- Öffnet deine Quest-GUI."));
-        src.sendMessage(Component.text("§8» §d/quests info <key> §7- Details zu einer Quest."));
-        if (admin) {
-            src.sendMessage(Component.text("§8» §d/quests reload §7- Quests neu laden."));
-        }
-        src.sendMessage(Component.text(" "));
     }
 
     @Override
     public List<String> suggest(Invocation invocation) {
-        var args = invocation.arguments();
-        boolean admin = hasAdmin(invocation);
+        String[] args = invocation.arguments();
+        CommandSource src = invocation.source();
 
         if (args.length == 0) {
-            return admin ? List.of("info", "reload") : List.of("info");
+            return List.of();
         }
 
         if (args.length == 1) {
+            List<String> base = new ArrayList<>();
+            base.add("help");
+            if (isAdmin(src)) {
+                base.add("reload");
+                base.add("reroll");
+                base.add("reset");
+            }
             String prefix = args[0].toLowerCase(Locale.ROOT);
-            return List.of("info", "reload").stream()
-                    .filter(s -> s.startsWith(prefix))
-                    .collect(Collectors.toList());
+            List<String> result = new ArrayList<>();
+            for (String s : base) {
+                if (s.startsWith(prefix)) result.add(s);
+            }
+            return result;
         }
 
-        if (args.length == 2 && args[0].equalsIgnoreCase("info")) {
+        if (args.length == 2 && args[0].equalsIgnoreCase("reset") && isAdmin(src)) {
             String prefix = args[1].toLowerCase(Locale.ROOT);
-            return quests.getActiveQuestKeys().stream()
-                    .filter(k -> k.toLowerCase(Locale.ROOT).startsWith(prefix))
-                    .sorted(String::compareToIgnoreCase)
-                    .collect(Collectors.toList());
+            List<String> result = new ArrayList<>();
+            if ("all".startsWith(prefix)) {
+                result.add("all");
+            }
+            for (Player p : proxy.getAllPlayers()) {
+                if (p.getUsername().toLowerCase(Locale.ROOT).startsWith(prefix)) {
+                    result.add(p.getUsername());
+                }
+            }
+            return result;
         }
 
         return List.of();
-    }
-
-    @Override
-    public boolean hasPermission(Invocation invocation) {
-        // /quests darf jeder benutzen
-        return true;
     }
 }

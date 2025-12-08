@@ -8,7 +8,8 @@ import java.sql.Statement;
 
 /**
  * Legt Tabellen für Rollen, User-Rollen, Permissions, Inheritance,
- * Maintenance-Konfiguration, Punishments, Reports, Economy, Sessions, Daily-Rewards und NPCs an.
+ * Maintenance-Konfiguration, Punishments, Reports, Economy, Sessions,
+ * Daily-Rewards, Quests und NPCs an.
  */
 public class DatabaseMigrationService {
 
@@ -21,7 +22,8 @@ public class DatabaseMigrationService {
     }
 
     public void runMigrations() {
-        try (Connection con = db.getConnection(); Statement st = con.createStatement()) {
+        try (Connection con = db.getConnection();
+             Statement st = con.createStatement()) {
 
             // ===========================
             // ROLLEN
@@ -87,7 +89,7 @@ public class DatabaseMigrationService {
                         uuid CHAR(36) NOT NULL,
                         name VARCHAR(16) NOT NULL,
                         first_login TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        last_login  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        last_login TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         last_logout TIMESTAMP NULL DEFAULT NULL,
                         total_play_seconds BIGINT NOT NULL DEFAULT 0,
                         last_server VARCHAR(64) NULL,
@@ -103,10 +105,9 @@ public class DatabaseMigrationService {
                     CREATE TABLE IF NOT EXISTS gf_economy (
                         uuid CHAR(36) NOT NULL PRIMARY KEY,
                         name VARCHAR(16) NOT NULL,
-                        balance BIGINT NOT NULL DEFAULT 0,      -- Galas
-                        stardust BIGINT NOT NULL DEFAULT 0,     -- Premium: Stardust ✧
-                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                            ON UPDATE CURRENT_TIMESTAMP
+                        balance BIGINT NOT NULL DEFAULT 0, -- Galas
+                        stardust BIGINT NOT NULL DEFAULT 0, -- Premium: Stardust ✧
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                     """);
 
@@ -114,7 +115,7 @@ public class DatabaseMigrationService {
             try {
                 st.executeUpdate("""
                         ALTER TABLE gf_economy
-                            ADD COLUMN IF NOT EXISTS stardust BIGINT NOT NULL DEFAULT 0
+                        ADD COLUMN IF NOT EXISTS stardust BIGINT NOT NULL DEFAULT 0
                         """);
             } catch (SQLException e) {
                 logger.debug("gf_economy: Spalte 'stardust' existiert evtl. bereits.", e);
@@ -129,8 +130,7 @@ public class DatabaseMigrationService {
                         name VARCHAR(16) NOT NULL,
                         last_claim_date DATE NOT NULL,
                         streak INT NOT NULL DEFAULT 1,
-                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                            ON UPDATE CURRENT_TIMESTAMP
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                     """);
 
@@ -158,38 +158,50 @@ public class DatabaseMigrationService {
                     """);
 
             // ===========================
-// QUESTS (Definitionen)
-// ===========================
+            // QUESTS (Definitionen)
+            // ===========================
             st.executeUpdate("""
-        CREATE TABLE IF NOT EXISTS gf_quests (
-            quest_key      VARCHAR(64) NOT NULL PRIMARY KEY,
-            title          VARCHAR(128) NOT NULL,
-            description    TEXT NOT NULL,
-            type           VARCHAR(32) NOT NULL, -- z.B. PLAYTIME_MINUTES, DAILY_LOGIN, EARN_GALAS
-            goal           BIGINT NOT NULL,
-            reward_galas   BIGINT NOT NULL DEFAULT 0,
-            reward_stardust BIGINT NOT NULL DEFAULT 0,
-            active         TINYINT(1) NOT NULL DEFAULT 1,
-            created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-        """);
+                    CREATE TABLE IF NOT EXISTS gf_quests (
+                        quest_key VARCHAR(64) NOT NULL PRIMARY KEY,
+                        title VARCHAR(128) NOT NULL,
+                        description TEXT NOT NULL,
+                        type VARCHAR(32) NOT NULL, -- DAILY, WEEKLY, MONTHLY, LIFETIME, EVENT
+                        goal BIGINT NOT NULL,
+                        reward_galas BIGINT NOT NULL DEFAULT 0,
+                        reward_stardust BIGINT NOT NULL DEFAULT 0,
+                        active TINYINT(1) NOT NULL DEFAULT 1,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                    """);
 
-// ===========================
-// QUEST PROGRESS (pro Spieler)
-// ===========================
+            // ===========================
+            // QUEST PROGRESS (pro Spieler)
+            //  + reward_claimed (für Claim per Emerald im GUI)
+            // ===========================
             st.executeUpdate("""
-        CREATE TABLE IF NOT EXISTS gf_quest_progress (
-            uuid         CHAR(36) NOT NULL,
-            quest_key    VARCHAR(64) NOT NULL,
-            progress     BIGINT NOT NULL DEFAULT 0,
-            completed    TINYINT(1) NOT NULL DEFAULT 0,
-            completed_at TIMESTAMP NULL DEFAULT NULL,
-            last_update  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (uuid, quest_key),
-            FOREIGN KEY (quest_key) REFERENCES gf_quests(quest_key) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-        """);
+                    CREATE TABLE IF NOT EXISTS gf_quest_progress (
+                        uuid CHAR(36) NOT NULL,
+                        quest_key VARCHAR(64) NOT NULL,
+                        progress BIGINT NOT NULL DEFAULT 0,
+                        completed TINYINT(1) NOT NULL DEFAULT 0,
+                        completed_at TIMESTAMP NULL DEFAULT NULL,
+                        reward_claimed TINYINT(1) NOT NULL DEFAULT 0,
+                        last_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        PRIMARY KEY (uuid, quest_key),
+                        FOREIGN KEY (quest_key) REFERENCES gf_quests(quest_key) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                    """);
+
+            // Falls Tabelle schon existiert, aber 'reward_claimed' noch fehlt → nachziehen
+            try {
+                st.executeUpdate("""
+                        ALTER TABLE gf_quest_progress
+                        ADD COLUMN IF NOT EXISTS reward_claimed TINYINT(1) NOT NULL DEFAULT 0
+                        """);
+            } catch (SQLException e) {
+                logger.debug("gf_quest_progress: Spalte 'reward_claimed' existiert evtl. bereits.", e);
+            }
 
             // ===========================
             // PUNISHMENTS (Bans + Mutes + Kicks + Warns + IP-Bans)
@@ -220,13 +232,13 @@ public class DatabaseMigrationService {
                         id BIGINT AUTO_INCREMENT PRIMARY KEY,
                         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         reporter_name VARCHAR(16) NOT NULL,
-                        target_name  VARCHAR(16) NOT NULL,
-                        server_name  VARCHAR(64),
-                        reason       TEXT NOT NULL,
-                        preset_key   VARCHAR(64),
-                        handled      TINYINT(1) NOT NULL DEFAULT 0,
-                        handled_by   VARCHAR(32) NULL,
-                        handled_at   TIMESTAMP NULL DEFAULT NULL,
+                        target_name VARCHAR(16) NOT NULL,
+                        server_name VARCHAR(64),
+                        reason TEXT NOT NULL,
+                        preset_key VARCHAR(64),
+                        handled TINYINT(1) NOT NULL DEFAULT 0,
+                        handled_by VARCHAR(32) NULL,
+                        handled_at TIMESTAMP NULL DEFAULT NULL,
                         INDEX idx_reports_target (target_name),
                         INDEX idx_reports_created_at (created_at),
                         INDEX idx_reports_handled (handled)
@@ -237,7 +249,7 @@ public class DatabaseMigrationService {
             try {
                 st.executeUpdate("""
                         ALTER TABLE gf_reports
-                            ADD COLUMN IF NOT EXISTS handled TINYINT(1) NOT NULL DEFAULT 0
+                        ADD COLUMN IF NOT EXISTS handled TINYINT(1) NOT NULL DEFAULT 0
                         """);
             } catch (SQLException e) {
                 logger.debug("gf_reports: Spalte 'handled' existiert evtl. bereits.", e);
@@ -246,7 +258,7 @@ public class DatabaseMigrationService {
             try {
                 st.executeUpdate("""
                         ALTER TABLE gf_reports
-                            ADD COLUMN IF NOT EXISTS handled_by VARCHAR(32) NULL
+                        ADD COLUMN IF NOT EXISTS handled_by VARCHAR(32) NULL
                         """);
             } catch (SQLException e) {
                 logger.debug("gf_reports: Spalte 'handled_by' existiert evtl. bereits.", e);
@@ -255,7 +267,7 @@ public class DatabaseMigrationService {
             try {
                 st.executeUpdate("""
                         ALTER TABLE gf_reports
-                            ADD COLUMN IF NOT EXISTS handled_at TIMESTAMP NULL
+                        ADD COLUMN IF NOT EXISTS handled_at TIMESTAMP NULL
                         """);
             } catch (SQLException e) {
                 logger.debug("gf_reports: Spalte 'handled_at' existiert evtl. bereits.", e);
@@ -268,18 +280,18 @@ public class DatabaseMigrationService {
             st.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS gf_npcs (
                         id INT AUTO_INCREMENT PRIMARY KEY,
-                        server_name  VARCHAR(64) NOT NULL,   -- z.B. "Lobby-1"
-                        name         VARCHAR(64) NOT NULL,   -- Anzeigename über dem Kopf
-                        world        VARCHAR(64) NOT NULL,
-                        x            DOUBLE NOT NULL,
-                        y            DOUBLE NOT NULL,
-                        z            DOUBLE NOT NULL,
-                        yaw          FLOAT NOT NULL,
-                        pitch        FLOAT NOT NULL,
-                        type         VARCHAR(32) NOT NULL,   -- z.B. SERVER_SELECTOR, INFO, ...
-                        target_server VARCHAR(64) NULL,      -- z.B. "Citybuild-1"
-                        skin_uuid    CHAR(36) NULL,
-                        created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        server_name VARCHAR(64) NOT NULL,  -- z.B. "Lobby-1"
+                        name VARCHAR(64) NOT NULL,         -- Anzeigename über dem Kopf
+                        world VARCHAR(64) NOT NULL,
+                        x DOUBLE NOT NULL,
+                        y DOUBLE NOT NULL,
+                        z DOUBLE NOT NULL,
+                        yaw FLOAT NOT NULL,
+                        pitch FLOAT NOT NULL,
+                        type VARCHAR(32) NOT NULL,         -- z.B. SERVER_SELECTOR, INFO, ...
+                        target_server VARCHAR(64) NULL,    -- z.B. "Citybuild-1"
+                        skin_uuid CHAR(36) NULL,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                     """);
 

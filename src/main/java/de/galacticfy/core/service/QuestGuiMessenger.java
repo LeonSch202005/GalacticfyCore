@@ -4,6 +4,7 @@ import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
 import de.galacticfy.core.service.QuestService.PlayerQuestView;
+import de.galacticfy.core.service.QuestService.QuestDefinition;
 import org.slf4j.Logger;
 
 import java.nio.charset.StandardCharsets;
@@ -27,37 +28,87 @@ public class QuestGuiMessenger {
         this.questService = questService;
     }
 
-    // beim /quests-Command aufgerufen
-    public void openGui(Player player, List<PlayerQuestView> quests) {
-        byte[] payload = serialize(quests);
-        player.getCurrentServer().ifPresent(conn -> {
-            conn.sendPluginMessage(channel, payload);
-        });
-    }
-
-    // wird vom QuestService über den updateHook benutzt
-    public void pushUpdate(UUID uuid) {
-        Player player = proxy.getPlayer(uuid).orElse(null);
+    /**
+     * /quests → GUI öffnen
+     */
+    public void openGui(Player player) {
         if (player == null) {
             return;
         }
-        List<PlayerQuestView> list = questService.getQuestsFor(uuid);
-        byte[] payload = serialize(list);
-        player.getCurrentServer().ifPresent(conn -> {
+
+        UUID uuid = player.getUniqueId();
+        List<PlayerQuestView> questsForPlayer = questService.getQuestsFor(uuid);
+
+        byte[] payload = serialize(questsForPlayer, "OPEN");
+
+        player.getCurrentServer().ifPresentOrElse(conn -> {
             conn.sendPluginMessage(channel, payload);
+        }, () -> {
+            logger.debug("QuestGuiMessenger: openGui für {}, aber Spieler ist auf keinem Server.",
+                    player.getUsername());
         });
     }
 
-    private byte[] serialize(List<PlayerQuestView> quests) {
-        StringBuilder sb = new StringBuilder();
+    /**
+     * Wird vom QuestService beim Fortschritt/Abschluss aufgerufen
+     * (über updateHook).
+     */
+    public void pushUpdate(UUID uuid) {
+        if (uuid == null) return;
+
+        Player player = proxy.getPlayer(uuid).orElse(null);
+        if (player == null) {
+            logger.debug("QuestGuiMessenger: pushUpdate für {}, aber Spieler ist nicht online.", uuid);
+            return;
+        }
+
+        if (player.getCurrentServer().isEmpty()) {
+            logger.debug("QuestGuiMessenger: pushUpdate für {}, aber Spieler ist auf keinem Server.",
+                    player.getUsername());
+            return;
+        }
+
+        List<PlayerQuestView> list = questService.getQuestsFor(uuid);
+        byte[] payload = serialize(list, "UPDATE");
+
+        player.getCurrentServer().ifPresent(conn ->
+                conn.sendPluginMessage(channel, payload));
+    }
+
+    /**
+     * Payload-Format (UTF-8):
+     *
+     *   Zeile 0:
+     *     MODE
+     *       MODE = "OPEN" oder "UPDATE"
+     *
+     *   ab Zeile 1:
+     *     key|title|desc|type|goal|progress|galas|stardust|completed
+     *
+     *  - key       → quest_key (z.B. "daily_break_stone_120_daily")
+     *  - title     → Anzeigename
+     *  - desc      → Beschreibung (eine Zeile, \n entfernt)
+     *  - type      → DAILY / WEEKLY / MONTHLY / LIFETIME / EVENT
+     *  - goal      → Ziel (z.B. 120)
+     *  - progress  → aktueller Fortschritt
+     *  - galas     → reward_galas
+     *  - stardust  → reward_stardust
+     *  - completed → 1 = fertig, 0 = nicht fertig
+     */
+    private byte[] serialize(List<PlayerQuestView> quests, String mode) {
+        StringBuilder sb = new StringBuilder(quests.size() * 128);
+
+        // Erste Zeile: nur MODE (kompatibel zu deinem alten Spigot-Code)
+        sb.append(mode).append('\n');
+
         for (PlayerQuestView view : quests) {
-            var def = view.definition();
-            long progress = view.progress();
+            QuestDefinition def = view.definition();
+            long progress   = view.progress();
             boolean completed = view.completed();
 
             sb.append(def.key()).append('|')
                     .append(def.title()).append('|')
-                    .append(def.description().replace('\n', ' ')).append('|')
+                    .append(sanitize(def.description())).append('|')
                     .append(def.type().name()).append('|')
                     .append(def.goal()).append('|')
                     .append(progress).append('|')
@@ -66,6 +117,13 @@ public class QuestGuiMessenger {
                     .append(completed ? '1' : '0')
                     .append('\n');
         }
+
         return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private String sanitize(String s) {
+        if (s == null) return "";
+        return s.replace('\n', ' ')
+                .replace('\r', ' ');
     }
 }
