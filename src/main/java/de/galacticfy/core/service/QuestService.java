@@ -139,7 +139,13 @@ public class QuestService {
         END_VISIT,
 
         // Extra-Stat nur für Zuckerrohr-Quests
-        SUGARCANE
+        SUGARCANE,
+
+        // Event-Stats
+        EVENT_SNOWBALL,
+        EVENT_SNOWMAN,
+        EVENT_PUMPKIN,
+        EVENT_EASTER_EGG
     }
 
     // =====================================================
@@ -862,7 +868,7 @@ public class QuestService {
         long weeklySeed = weekId * 13_337L + rerollOffset * 17_171L;
         long monthId = date.getYear() * 12L + date.getMonthValue();
         long monthlySeed = monthId * 77_777L + rerollOffset * 9_191L;
-        long eventSeed = date.toEpochDay() * 99_999L + rerollOffset * 42_042L;
+        long eventSeedBase = date.toEpochDay() * 99_999L + rerollOffset * 42_042L;
 
         // DAILY
         Random dailyRandom = new Random(dailySeed);
@@ -876,11 +882,38 @@ public class QuestService {
         Random monthlyRandom = new Random(monthlySeed);
         generateFromTemplates(QuestType.MONTHLY, 4, monthlyRandom);
 
-        // EVENT
-        if (isChristmas(date) || isHalloween(date) || isEaster(date)) {
-            Random eventRandom = new Random(eventSeed);
-            generateFromTemplates(QuestType.EVENT, 2, eventRandom);
+        // EVENT – pro aktivem Event immer 3 passende Quests
+        if (isChristmas(date)) {
+            Random eventRandom = new Random(eventSeedBase ^ 0xC01DL);
+            generateFromTemplates(
+                    QuestType.EVENT,
+                    3,
+                    eventRandom,
+                    t -> t.keyBase().startsWith("event_xmas_")
+            );
         }
+
+        if (isHalloween(date)) {
+            // FIX: 0xHAL0 war ungültig, jetzt ein normaler Hex-Wert
+            Random eventRandom = new Random(eventSeedBase ^ 0xABCD1234L);
+            generateFromTemplates(
+                    QuestType.EVENT,
+                    3,
+                    eventRandom,
+                    t -> t.keyBase().startsWith("event_halloween_")
+            );
+        }
+
+        if (isEaster(date)) {
+            Random eventRandom = new Random(eventSeedBase ^ 0xE45EL);
+            generateFromTemplates(
+                    QuestType.EVENT,
+                    3,
+                    eventRandom,
+                    t -> t.keyBase().startsWith("event_easter_")
+            );
+        }
+
 
         lastGenerationDate = date;
         logger.info("QuestService: {} Quest-Definitionen für {} generiert (inkl. Lifetime, rerollOffset={}).",
@@ -888,12 +921,20 @@ public class QuestService {
     }
 
     private void generateFromTemplates(QuestType type, int amount, Random random) {
+        generateFromTemplates(type, amount, random, t -> true);
+    }
+
+    private void generateFromTemplates(QuestType type,
+                                       int amount,
+                                       Random random,
+                                       java.util.function.Predicate<QuestTemplate> filter) {
         List<QuestTemplate> pool = templates.stream()
                 .filter(t -> t.type == type)
+                .filter(filter)
                 .toList();
 
         if (pool.isEmpty()) {
-            logger.warn("QuestService: Keine Templates für Typ {} vorhanden.", type);
+            logger.warn("QuestService: Keine Templates für Typ {} mit Filter vorhanden.", type);
             return;
         }
 
@@ -1279,6 +1320,12 @@ public class QuestService {
                                    BiConsumer<UUID, Component> sender) {
         applyStatToMatchingQuests(uuid, name, amount, sender, StatType.GRAVEL);
     }
+    // Weihnachts-Event: Schneebälle sammeln
+    public void handleXmasSnowballs(UUID uuid, String name, long amount,
+                                    BiConsumer<UUID, Component> sender) {
+        applyStatToMatchingQuests(uuid, name, amount, sender, StatType.EVENT_SNOWBALL);
+    }
+
 
     public void handleNetherrackBroken(UUID uuid, String name, long amount,
                                        BiConsumer<UUID, Component> sender) {
@@ -1520,6 +1567,25 @@ public class QuestService {
         applyStatToMatchingQuests(uuid, name, amount, sender, StatType.END_VISIT);
     }
 
+    public void handleEventSnowball(UUID uuid, String name, long amount,
+                                    BiConsumer<UUID, Component> sender) {
+        applyStatToMatchingQuests(uuid, name, amount, sender, StatType.EVENT_SNOWBALL);
+    }
+    public void handleEventSnowman(UUID uuid, String name, long amount,
+                                   BiConsumer<UUID, Component> sender) {
+        applyStatToMatchingQuests(uuid, name, amount, sender, StatType.EVENT_SNOWMAN);
+    }
+    public void handleEventPumpkin(UUID uuid, String name, long amount,
+                                   BiConsumer<UUID, Component> sender) {
+        applyStatToMatchingQuests(uuid, name, amount, sender, StatType.EVENT_PUMPKIN);
+    }
+    public void handleEventEasterEgg(UUID uuid, String name, long amount,
+                                     BiConsumer<UUID, Component> sender) {
+        applyStatToMatchingQuests(uuid, name, amount, sender, StatType.EVENT_EASTER_EGG);
+    }
+
+
+
     // =====================================================
     // Stat-Router intern
     // =====================================================
@@ -1561,12 +1627,17 @@ public class QuestService {
 
     private boolean matchesStat(QuestDefinition def, StatType statType) {
         String k = def.key().toLowerCase(Locale.ROOT);
+        boolean isLifetime = (def.type() == QuestType.LIFETIME);
 
         return switch (statType) {
             // Mining: genauere Zuordnung
 
-            // Nur Stein-Quests
-            case STONE -> (k.contains("break_stone") || k.contains("mine_stone"));
+            // Stein-Quests (inkl. Lifetime)
+            case STONE -> (
+                    k.contains("break_stone")
+                            || k.contains("mine_stone")
+                            || (isLifetime && k.contains("mine") && k.contains("stone"))
+            );
 
             // Nur Erz-Quests
             case ORE -> k.contains("break_ores");
@@ -1600,7 +1671,13 @@ public class QuestService {
 
             case WOOD       -> k.contains("break_wood");
             case FISH       -> k.contains("fish");
-            case MOB        -> k.contains("kill_mobs");
+
+            // Mobs (inkl. Lifetime)
+            case MOB -> (
+                    k.contains("kill_mobs")
+                            || (isLifetime && k.contains("kill") && k.contains("mobs"))
+            );
+
             case ZOMBIE     -> k.contains("kill_zombies");
             case CREEPER    -> k.contains("kill_creepers");
             case TRADE      -> k.contains("trades");
@@ -1627,6 +1704,13 @@ public class QuestService {
                             || k.contains("smelt_materials") // Monatsquest ebenfalls
             );
             case WALK       -> k.contains("walk_");
+
+            // Events
+            case EVENT_SNOWBALL -> k.contains("event_xmas_snowballs");
+            case EVENT_SNOWMAN  -> k.contains("event_xmas_snowmen");
+            case EVENT_PUMPKIN  -> k.contains("event_halloween_pumpkins");
+            case EVENT_EASTER_EGG -> k.contains("event_easter_eggs");
+
 
             // aktuell keine Quests für:
             case BREED, TAME, SHEAR, MILK, EGG -> false;

@@ -8,7 +8,6 @@ import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.slf4j.Logger;
 
-import javax.management.relation.Role;
 import java.sql.*;
 import java.time.Instant;
 import java.util.*;
@@ -24,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *  - Permission-Wildcards: "*", "foo.*"
  *  - Role-Inherit (Rollen erben andere Rollen)
  *  - Expiring Ranks (expires_at)
+ *  - server_scope: GLOBAL / PROXY / Citybuild-1 / Farmwelt-1 / ...
  */
 public class GalacticfyPermissionService {
 
@@ -35,12 +35,41 @@ public class GalacticfyPermissionService {
     private final Map<String, GalacticfyRole> roleByName = new ConcurrentHashMap<>();
     private final Map<Integer, GalacticfyRole> roleById = new ConcurrentHashMap<>();
 
-    private final Map<Integer, Set<String>> permissionsByRoleId = new ConcurrentHashMap<>();
+    /**
+     * Rollen-Permissions inkl. Server-Scope.
+     */
+    private static final class RolePermissionEntry {
+        final String permission;   // z.B. "galacticfy.quests.use"
+        final String serverScope;  // z.B. "GLOBAL", "PROXY", "Citybuild-1"
+
+        RolePermissionEntry(String permission, String serverScope) {
+            this.permission = permission;
+            this.serverScope = (serverScope == null || serverScope.isBlank())
+                    ? "GLOBAL"
+                    : serverScope;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof RolePermissionEntry that)) return false;
+            return Objects.equals(permission, that.permission)
+                    && Objects.equals(serverScope, that.serverScope);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(permission, serverScope);
+        }
+    }
+
+    // role_id -> Einträge (permission + serverScope)
+    private final Map<Integer, Set<RolePermissionEntry>> permissionsByRoleId = new ConcurrentHashMap<>();
     private final Map<Integer, Set<Integer>> parentsByRoleId = new ConcurrentHashMap<>();
-    private final Map<Integer, Set<String>> effectivePermissionsCache = new ConcurrentHashMap<>();
+    // role_id -> effektive Einträge inkl. Vererbung
+    private final Map<Integer, Set<RolePermissionEntry>> effectivePermissionsCache = new ConcurrentHashMap<>();
 
     private final Map<UUID, CachedUserRole> userRoleCache = new ConcurrentHashMap<>();
-
 
     // Cache: User → Rolle + Expire
     private static class CachedUserRole {
@@ -66,7 +95,7 @@ public class GalacticfyPermissionService {
     }
 
     // ---------------------------------------------------
-    //  Normale Permissionchecks über Velocity
+    //  Normale Permissionchecks über Velocity (Legacy)
     // ---------------------------------------------------
 
     public boolean hasPermission(CommandSource source, String permission) {
@@ -521,19 +550,23 @@ public class GalacticfyPermissionService {
         permissionsByRoleId.clear();
         try (Connection con = db.getConnection();
              PreparedStatement ps = con.prepareStatement(
-                     "SELECT role_id, permission FROM gf_role_permissions"
+                     "SELECT role_id, permission, server_scope FROM gf_role_permissions"
              );
              ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
                 int roleId = rs.getInt("role_id");
                 String perm = rs.getString("permission");
+                String scope = rs.getString("server_scope");
+
                 if (perm == null || perm.isBlank()) continue;
                 String node = perm.toLowerCase(Locale.ROOT);
 
+                RolePermissionEntry entry = new RolePermissionEntry(node, scope);
+
                 permissionsByRoleId
                         .computeIfAbsent(roleId, k -> ConcurrentHashMap.newKeySet())
-                        .add(node);
+                        .add(entry);
             }
         } catch (SQLException e) {
             logger.error("Fehler beim Laden der Rollen-Permissions", e);
@@ -541,34 +574,54 @@ public class GalacticfyPermissionService {
         effectivePermissionsCache.clear();
     }
 
+    // Default: GLOBAL-Scope
     public boolean addPermissionToRole(String roleName, String permission) {
+        return addPermissionToRole(roleName, permission, "GLOBAL");
+    }
+
+    /**
+     * Neues API: Permission + server_scope setzen.
+     * Beispiele:
+     *  - server_scope="GLOBAL"
+     *  - server_scope="PROXY"
+     *  - server_scope="Citybuild-1"
+     */
+    public boolean addPermissionToRole(String roleName, String permission, String serverScope) {
         GalacticfyRole role = getRoleByName(roleName);
         if (role == null) return false;
         if (permission == null || permission.isBlank()) return false;
 
         String node = permission.toLowerCase(Locale.ROOT);
+        String scope = (serverScope == null || serverScope.isBlank())
+                ? "GLOBAL"
+                : serverScope;
 
         try (Connection con = db.getConnection();
              PreparedStatement ps = con.prepareStatement(
-                     "INSERT INTO gf_role_permissions (role_id, permission) VALUES (?, ?) " +
+                     "INSERT INTO gf_role_permissions (role_id, permission, server_scope) VALUES (?, ?, ?) " +
                              "ON DUPLICATE KEY UPDATE permission = permission"
              )) {
             ps.setInt(1, role.id);
             ps.setString(2, node);
+            ps.setString(3, scope);
             ps.executeUpdate();
 
             permissionsByRoleId
                     .computeIfAbsent(role.id, k -> ConcurrentHashMap.newKeySet())
-                    .add(node);
+                    .add(new RolePermissionEntry(node, scope));
 
             effectivePermissionsCache.clear();
             return true;
         } catch (SQLException e) {
-            logger.error("Fehler beim Hinzufügen der Permission {} zu Rolle {}", node, roleName, e);
+            logger.error("Fehler beim Hinzufügen der Permission {} ({}) zu Rolle {}", node, scope, roleName, e);
             return false;
         }
     }
 
+    /**
+     * Entfernt alle Scopes für diese Permission von der Rolle.
+     * (Wenn du später pro Scope löschen willst, kann man das erweitern.)
+     */
     public boolean removePermissionFromRole(String roleName, String permission) {
         GalacticfyRole role = getRoleByName(roleName);
         if (role == null) return false;
@@ -585,9 +638,9 @@ public class GalacticfyPermissionService {
             boolean ok = ps.executeUpdate() > 0;
 
             if (ok) {
-                Set<String> set = permissionsByRoleId.get(role.id);
+                Set<RolePermissionEntry> set = permissionsByRoleId.get(role.id);
                 if (set != null) {
-                    set.remove(node);
+                    set.removeIf(e -> e.permission.equalsIgnoreCase(node));
                 }
                 effectivePermissionsCache.clear();
             }
@@ -600,30 +653,36 @@ public class GalacticfyPermissionService {
     }
 
     // ---------------------------------------------------
-    //  Zentrale Permission-Abfrage für DEIN Plugin
+    //  Zentrale Permission-Abfrage für DEIN Plugin (server-aware)
     // ---------------------------------------------------
     public boolean hasPluginPermission(CommandSource source, String permission) {
         if (permission == null || permission.isBlank()) return true;
 
         if (!(source instanceof Player player)) {
-            return true;
+            // Konsole / Proxy-Intern = PROXY-Scope
+            return hasRankPermission(null, permission, "PROXY");
         }
 
-        if (hasRankPermission(player, permission)) {
-            return true;
-        }
+        String serverName = player.getCurrentServer()
+                .map(conn -> conn.getServerInfo().getName())
+                .orElse("PROXY");
 
-        return player.hasPermission(permission);
+        return hasRankPermission(player.getUniqueId(), permission, serverName)
+                || player.hasPermission(permission);
     }
 
     public List<String> getPermissionsOfRole(String roleName) {
         GalacticfyRole role = getRoleByName(roleName);
         if (role == null) return List.of();
 
-        Set<String> set = permissionsByRoleId.get(role.id);
+        Set<RolePermissionEntry> set = permissionsByRoleId.get(role.id);
         if (set == null || set.isEmpty()) return List.of();
 
-        List<String> list = new ArrayList<>(set);
+        List<String> list = new ArrayList<>();
+        for (RolePermissionEntry e : set) {
+            // Nur der Node – wenn du willst, kannst du später "node [scope]" anzeigen
+            list.add(e.permission + " [" + e.serverScope + "]");
+        }
         list.sort(String::compareToIgnoreCase);
         return list;
     }
@@ -726,16 +785,16 @@ public class GalacticfyPermissionService {
         return list;
     }
 
-    private Set<String> computeEffectivePermissions(GalacticfyRole role, Set<Integer> visited) {
+    private Set<RolePermissionEntry> computeEffectivePermissions(GalacticfyRole role, Set<Integer> visited) {
         if (role == null) return Set.of();
 
         if (!visited.add(role.id)) {
             return Set.of();
         }
 
-        Set<String> result = new HashSet<>();
+        Set<RolePermissionEntry> result = new HashSet<>();
 
-        Set<String> own = permissionsByRoleId.get(role.id);
+        Set<RolePermissionEntry> own = permissionsByRoleId.get(role.id);
         if (own != null) {
             result.addAll(own);
         }
@@ -752,33 +811,77 @@ public class GalacticfyPermissionService {
         return result;
     }
 
-    private Set<String> getEffectivePermissionsForRole(GalacticfyRole role) {
+    private Set<RolePermissionEntry> getEffectivePermissionsForRole(GalacticfyRole role) {
         if (role == null) return Set.of();
 
-        Set<String> cached = effectivePermissionsCache.get(role.id);
+        Set<RolePermissionEntry> cached = effectivePermissionsCache.get(role.id);
         if (cached != null) return cached;
 
-        Set<String> perms = computeEffectivePermissions(role, new HashSet<>());
-        Set<String> unmodifiable = Collections.unmodifiableSet(perms);
+        Set<RolePermissionEntry> perms = computeEffectivePermissions(role, new HashSet<>());
+        Set<RolePermissionEntry> unmodifiable = Collections.unmodifiableSet(perms);
         effectivePermissionsCache.put(role.id, unmodifiable);
         return unmodifiable;
     }
 
-    public boolean hasRankPermission(Player player, String permission) {
-        if (permission == null || permission.isBlank()) return true;
+    private boolean scopeMatches(String entryScope, String currentServerName, boolean proxyContext) {
+        String scope = (entryScope == null || entryScope.isBlank())
+                ? "GLOBAL"
+                : entryScope;
 
-        GalacticfyRole role = getRoleFor(player.getUniqueId());
+        // GLOBAL → überall
+        if (scope.equalsIgnoreCase("GLOBAL")) {
+            return true;
+        }
+
+        // PROXY → nur Proxy-Kontext
+        if (scope.equalsIgnoreCase("PROXY")) {
+            return proxyContext;
+        }
+
+        // Server-spezifisch
+        if (currentServerName == null || currentServerName.isBlank()) {
+            return false;
+        }
+        return scope.equalsIgnoreCase(currentServerName);
+    }
+
+    /**
+     * Core-Methode: permission pro Server prüfen.
+     *
+     * @param uuid             UUID des Spielers (kann null sein für Konsole)
+     * @param permission       zu prüfende Permission
+     * @param currentServer    z.B. "Citybuild-1", "Lobby-1" oder "PROXY"
+     */
+    public boolean hasRankPermission(UUID uuid, String permission, String currentServer) {
+        if (permission == null || permission.isBlank()) return true;
+        if (uuid == null) {
+            // Konsole etc. → PROXY-Kontext, standardmäßig alles erlaubt
+            return true;
+        }
+
+        GalacticfyRole role = getRoleFor(uuid);
         if (role == null) return false;
 
-        Set<String> permsList = getEffectivePermissionsForRole(role);
+        Set<RolePermissionEntry> permsList = getEffectivePermissionsForRole(role);
         if (permsList.isEmpty()) return false;
 
         String node = permission.toLowerCase(Locale.ROOT);
+        String serverName = (currentServer == null || currentServer.isBlank())
+                ? "PROXY"
+                : currentServer;
+        boolean proxyContext = "PROXY".equalsIgnoreCase(serverName);
 
-        for (String raw : permsList) {
-            if (raw == null || raw.isBlank()) continue;
-            String p = raw.toLowerCase(Locale.ROOT);
+        for (RolePermissionEntry entry : permsList) {
+            if (entry.permission == null || entry.permission.isBlank()) continue;
 
+            String p = entry.permission.toLowerCase(Locale.ROOT);
+
+            // Scope-Match?
+            if (!scopeMatches(entry.serverScope, serverName, proxyContext)) {
+                continue;
+            }
+
+            // Wildcard / exakte Permission
             if (p.equals("*")) return true;
 
             if (p.equals(node)) return true;
@@ -792,17 +895,25 @@ public class GalacticfyPermissionService {
         }
         return false;
     }
+
+    /**
+     * Bequemer Wrapper für Velocity-Player.
+     */
+    public boolean hasRankPermission(Player player, String permission) {
+        if (player == null) return hasRankPermission((UUID) null, permission, "PROXY");
+        String serverName = player.getCurrentServer()
+                .map(conn -> conn.getServerInfo().getName())
+                .orElse("PROXY");
+        return hasRankPermission(player.getUniqueId(), permission, serverName);
+    }
+
     /**
      * Lädt Rollen, Permissions, Inheritance und den User-Cache komplett neu.
      * Wird z.B. von /rank reload aufgerufen.
      */
-    // ---------------------------------------------------
-//  Reload für /rank reload
-// ---------------------------------------------------
     public void reloadAllCaches() {
         logger.info("GalacticfyPermissionService: Starte /rank reload ...");
 
-        // alle Caches leeren
         roleByName.clear();
         roleById.clear();
         permissionsByRoleId.clear();
@@ -810,30 +921,21 @@ public class GalacticfyPermissionService {
         effectivePermissionsCache.clear();
         userRoleCache.clear();
 
-        // Default-Rolle sichern
         ensureDefaultRole();
 
-        // alles neu aus der DB laden
-        reloadAllRoles();            // lädt gf_roles in roleByName/roleById
-        reloadAllRolePermissions();  // lädt gf_role_permissions
-        reloadAllInheritance();      // lädt gf_role_inherits
+        reloadAllRoles();
+        reloadAllRolePermissions();
+        reloadAllInheritance();
 
         logger.info("GalacticfyPermissionService: Reload abgeschlossen.");
     }
+
     public boolean hasConsoleOrPluginPerm(CommandSource src, String permission) {
-        // Konsole / Proxy-Intern: immer erlaubt
         if (!(src instanceof Player)) {
             return true;
         }
-
-        // Spieler → ganz normal dein Plugin-Permissionsystem benutzen
         return hasPluginPermission(src, permission);
     }
-
-
-
-
-
 
     // ---------------------------------------------------
     //  High-Level Helpers (Staff, Maintenance, Display)
@@ -857,7 +959,6 @@ public class GalacticfyPermissionService {
         String suffixRaw = (role != null && role.suffix != null) ? role.suffix : "";
         String colorHex = (role != null && role.colorHex != null) ? role.colorHex : "FFFFFF";
 
-        // & → § für Legacy-Farbcodes
         String prefixLegacy = prefixRaw.replace('&', '§');
         String suffixLegacy = suffixRaw.replace('&', '§');
 
@@ -868,15 +969,12 @@ public class GalacticfyPermissionService {
             nameColor = TextColor.color(0xFFFFFF);
         }
 
-        // Name in Rollenfarbe
         Component nameComp = Component.text(name).color(nameColor);
 
-        // Prefix (mit Farben aus &-Codes)
         Component prefixComp = prefixLegacy.isBlank()
                 ? Component.empty()
                 : LegacyComponentSerializer.legacySection().deserialize(prefixLegacy + " ");
 
-        // Suffix (optional)
         Component suffixComp = suffixLegacy.isBlank()
                 ? Component.empty()
                 : Component.text(" ").append(
@@ -890,20 +988,18 @@ public class GalacticfyPermissionService {
     }
 
     public Component getPrefixComponent(Player player) {
-        // du hast diese Methode bereits
         GalacticfyRole role = getRoleFor(player.getUniqueId());
 
         if (role == null || role.prefix == null || role.prefix.isBlank()) {
             return Component.empty();
         }
 
-        // & → § konvertieren, dann als Legacy-Text parsen
         String legacy = role.prefix.replace('&', '§');
         return LegacyComponentSerializer.legacySection().deserialize(legacy);
     }
-    /**
-     * Prüft die Permission eines OFFLINE Spielers anhand der gespeicherten Rollen.
-     */
+
+    // Achtung: Diese Methode arbeitet gegen ein altes Schema (r.permissions).
+    // Wenn du sie nicht benutzt, kannst du sie später entfernen oder anpassen.
     public boolean hasOfflinePlayerPermission(String name, String permission) {
         if (name == null || permission == null) return false;
 
@@ -936,7 +1032,4 @@ public class GalacticfyPermissionService {
 
         return false;
     }
-
-
-
 }

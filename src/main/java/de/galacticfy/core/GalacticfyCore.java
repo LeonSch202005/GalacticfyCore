@@ -143,8 +143,13 @@ public class GalacticfyCore {
         // ==============================
         // Quest-Command
         // ==============================
+        // ==============================
+        // Quest-Command
+        // ==============================
         CommandMeta questsMeta = commandManager.metaBuilder("quests").build();
         commandManager.register(questsMeta, new QuestCommand(questService, questGuiMessenger, proxy));
+
+
 
         // ==============================
         // Teleport- & Utility-Commands
@@ -153,7 +158,7 @@ public class GalacticfyCore {
         commandManager.register(freezeMeta, new FreezeCommand(proxy, freezeService));
 
         CommandMeta hubMeta = commandManager.metaBuilder("hub")
-                .aliases("lobby", "spawn")
+                .aliases("lobby")
                 .build();
         commandManager.register(hubMeta, new HubCommand(teleportService, maintenanceService));
 

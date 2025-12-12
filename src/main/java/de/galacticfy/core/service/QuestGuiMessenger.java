@@ -2,6 +2,7 @@ package de.galacticfy.core.service;
 
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
+import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
 import de.galacticfy.core.service.QuestService.PlayerQuestView;
 import de.galacticfy.core.service.QuestService.QuestDefinition;
@@ -9,6 +10,7 @@ import org.slf4j.Logger;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public class QuestGuiMessenger {
@@ -41,12 +43,18 @@ public class QuestGuiMessenger {
 
         byte[] payload = serialize(questsForPlayer, "OPEN");
 
-        player.getCurrentServer().ifPresentOrElse(conn -> {
-            conn.sendPluginMessage(channel, payload);
-        }, () -> {
-            logger.debug("QuestGuiMessenger: openGui für {}, aber Spieler ist auf keinem Server.",
-                    player.getUsername());
-        });
+        Optional<ServerConnection> optConn = player.getCurrentServer();
+        if (optConn.isEmpty()) {
+            logger.warn("[QuestGuiMessenger] openGui: Spieler {} ist auf KEINEM Server.", player.getUsername());
+            return;
+        }
+
+        ServerConnection conn = optConn.get();
+        String serverName = conn.getServerInfo().getName();
+        logger.info("[QuestGuiMessenger] Sende OPEN-Payload ({} Bytes) für Spieler {} an Server {} über Channel {}",
+                payload.length, player.getUsername(), serverName, channel.getId());
+
+        conn.sendPluginMessage(channel, payload);
     }
 
     /**
@@ -58,21 +66,25 @@ public class QuestGuiMessenger {
 
         Player player = proxy.getPlayer(uuid).orElse(null);
         if (player == null) {
-            logger.debug("QuestGuiMessenger: pushUpdate für {}, aber Spieler ist nicht online.", uuid);
+            logger.debug("[QuestGuiMessenger] pushUpdate: Spieler {} ist nicht online.", uuid);
             return;
         }
 
-        if (player.getCurrentServer().isEmpty()) {
-            logger.debug("QuestGuiMessenger: pushUpdate für {}, aber Spieler ist auf keinem Server.",
-                    player.getUsername());
+        Optional<ServerConnection> optConn = player.getCurrentServer();
+        if (optConn.isEmpty()) {
+            logger.debug("[QuestGuiMessenger] pushUpdate: Spieler {} ist auf keinem Server.", player.getUsername());
             return;
         }
 
         List<PlayerQuestView> list = questService.getQuestsFor(uuid);
         byte[] payload = serialize(list, "UPDATE");
 
-        player.getCurrentServer().ifPresent(conn ->
-                conn.sendPluginMessage(channel, payload));
+        ServerConnection conn = optConn.get();
+        String serverName = conn.getServerInfo().getName();
+        logger.debug("[QuestGuiMessenger] Sende UPDATE-Payload ({} Bytes) für Spieler {} an Server {}",
+                payload.length, player.getUsername(), serverName);
+
+        conn.sendPluginMessage(channel, payload);
     }
 
     /**
@@ -98,7 +110,7 @@ public class QuestGuiMessenger {
     private byte[] serialize(List<PlayerQuestView> quests, String mode) {
         StringBuilder sb = new StringBuilder(quests.size() * 128);
 
-        // Erste Zeile: nur MODE (kompatibel zu deinem alten Spigot-Code)
+        // Erste Zeile: MODE
         sb.append(mode).append('\n');
 
         for (PlayerQuestView view : quests) {
@@ -118,7 +130,10 @@ public class QuestGuiMessenger {
                     .append('\n');
         }
 
-        return sb.toString().getBytes(StandardCharsets.UTF_8);
+        String s = sb.toString();
+        logger.debug("[QuestGuiMessenger] serialize(mode={}, quests={}) → {} Zeichen",
+                mode, quests.size(), s.length());
+        return s.getBytes(StandardCharsets.UTF_8);
     }
 
     private String sanitize(String s) {

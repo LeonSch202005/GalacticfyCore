@@ -8,10 +8,8 @@ import com.velocitypowered.api.proxy.player.TabListEntry;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
 import net.kyori.adventure.text.Component;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.Locale;
-import java.util.UUID;
 
 public class RankCommand implements SimpleCommand {
 
@@ -62,7 +60,7 @@ public class RankCommand implements SimpleCommand {
             return;
         }
 
-        // NEU: /rank reload
+        // /rank reload
         if (first.equals("reload")) {
             handleReload(src);
             return;
@@ -85,34 +83,65 @@ public class RankCommand implements SimpleCommand {
             return;
         }
 
+        // Ränge + Permissions neu laden
         perms.reloadAllCaches();
 
-        // Tablist-DisplayName für alle Spieler neu bauen
+        // Für JEDEN Viewer die Tablist so bauen,
+        // dass er nur Spieler vom eigenen Server sieht.
         proxy.getAllPlayers().forEach(viewer -> {
-            var tab = viewer.getTabList();
-            proxy.getAllPlayers().forEach(target -> {
-                var uuid = target.getUniqueId();
-                var displayName = perms.getDisplayName(target);
 
-                tab.getEntry(uuid).ifPresentOrElse(entry -> {
-                    entry.setDisplayName(displayName);
-                }, () -> {
-                    TabListEntry entry = TabListEntry.builder()
-                            .tabList(tab)
-                            .profile(target.getGameProfile())
-                            .displayName(displayName)
-                            .latency(1)
-                            .gameMode(0)
-                            .listed(true)
-                            .build();
-                    tab.addEntry(entry);
+            var tab = viewer.getTabList();
+
+            // Name des Servers, auf dem der Viewer aktuell ist
+            String viewerServer = viewer.getCurrentServer()
+                    .map(cs -> cs.getServerInfo().getName())
+                    .orElse(null);
+
+            // Welche Spieler sollen in dieser Tablist stehen?
+            Set<UUID> shouldShow = new HashSet<>();
+
+            if (viewerServer != null) {
+                proxy.getAllPlayers().forEach(target -> {
+                    String targetServer = target.getCurrentServer()
+                            .map(cs -> cs.getServerInfo().getName())
+                            .orElse(null);
+
+                    if (viewerServer.equalsIgnoreCase(targetServer)) {
+                        UUID uuid = target.getUniqueId();
+                        shouldShow.add(uuid);
+
+                        var displayName = perms.getDisplayName(target);
+
+                        tab.getEntry(uuid).ifPresentOrElse(entry -> {
+                            // nur DisplayName updaten
+                            entry.setDisplayName(displayName);
+                        }, () -> {
+                            // neuer Eintrag für diesen Viewer
+                            TabListEntry entry = TabListEntry.builder()
+                                    .tabList(tab)
+                                    .profile(target.getGameProfile())
+                                    .displayName(displayName)
+                                    .latency(1)
+                                    .gameMode(0)
+                                    .listed(true)
+                                    .build();
+                            tab.addEntry(entry);
+                        });
+                    }
                 });
+            }
+
+            // Alles entfernen, was NICHT auf dem gleichen Server ist
+            tab.getEntries().forEach(entry -> {
+                UUID uuid = entry.getProfile().getId();
+                if (!shouldShow.contains(uuid)) {
+                    tab.removeEntry(uuid);
+                }
             });
         });
 
-        src.sendMessage(prefix().append(Component.text("§aRank-System wurde neu geladen.")));
+        src.sendMessage(prefix().append(Component.text("§aRank-System & Tablist wurden neu geladen.")));
     }
-
 
     // ============================================================
     // GROUP SUBCOMMANDS

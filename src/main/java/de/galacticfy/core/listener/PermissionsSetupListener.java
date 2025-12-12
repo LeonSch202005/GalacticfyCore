@@ -15,8 +15,8 @@ import org.slf4j.Logger;
  * Hängt dein eigenes Rank-/Permission-System in Velocity ein.
  *
  * Ergebnis:
- *  - Alle hasPermission()-Checks laufen über GalacticfyPermissionService.hasRankPermission(...)
- *  - Wenn eine Rolle "*" hat, ist der Spieler effektiv OP (TRUE für alles).
+ *  - Alle hasPermission()-Checks laufen über GalacticfyPermissionService.hasRankPermission(..., serverName)
+ *  - server_scope aus gf_role_permissions wird berücksichtigt.
  */
 public class PermissionsSetupListener {
 
@@ -33,27 +33,35 @@ public class PermissionsSetupListener {
         PermissionSubject subject = event.getSubject();
         final PermissionProvider baseProvider = event.getProvider(); // bisheriger Provider (Velocity/LuckPerms/…)
 
-        // Unser eigener Provider
         PermissionProvider customProvider = new PermissionProvider() {
             @Override
             public PermissionFunction createFunction(PermissionSubject s) {
 
-                // === Spieler → Dein Rank-System ===
+                // === Spieler → Dein Rank-System inkl. server_scope ===
                 if (s instanceof Player player) {
                     return permission -> {
-                        // 1) Galacticfy-Rank-System
-                        boolean allowed = permissionService.hasRankPermission(player, permission);
+                        // aktueller Servername (oder PROXY)
+                        String currentServerName = player.getCurrentServer()
+                                .map(conn -> conn.getServerInfo().getName())
+                                .orElse("PROXY");
+
+                        boolean allowed = permissionService.hasRankPermission(
+                                player.getUniqueId(),
+                                permission,
+                                currentServerName
+                        );
+
                         if (allowed) {
                             return Tristate.TRUE;  // "*" aus DB = ALLES
                         }
 
-                        // 2) Fallback: ursprünglicher Provider (falls du ihn noch benutzen willst)
+                        // Fallback: ursprünglicher Provider (falls du ihn noch benutzen willst)
                         PermissionFunction original = baseProvider.createFunction(s);
                         return original.getPermissionValue(permission);
                     };
                 }
 
-                // === Konsole → alles erlaubt ===
+                // === Konsole → alles erlaubt (PROXY-Kontext) ===
                 if (s instanceof ConsoleCommandSource) {
                     return permission -> Tristate.TRUE;
                 }

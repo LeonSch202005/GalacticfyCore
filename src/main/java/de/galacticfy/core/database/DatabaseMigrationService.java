@@ -68,17 +68,28 @@ public class DatabaseMigrationService {
                     """);
 
             // ===========================
-            // ROLLEN-VERERBUNG (INHERIT)
-            // ===========================
+// ROLLEN-PERMISSIONS (mit server_scope)
+// ===========================
             st.executeUpdate("""
-                    CREATE TABLE IF NOT EXISTS gf_role_inherits (
-                        role_id INT NOT NULL,
-                        parent_role_id INT NOT NULL,
-                        PRIMARY KEY (role_id, parent_role_id),
-                        FOREIGN KEY (role_id) REFERENCES gf_roles(id) ON DELETE CASCADE,
-                        FOREIGN KEY (parent_role_id) REFERENCES gf_roles(id) ON DELETE CASCADE
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-                    """);
+        CREATE TABLE IF NOT EXISTS gf_role_permissions (
+            role_id INT NOT NULL,
+            permission VARCHAR(128) NOT NULL,
+            server_scope VARCHAR(64) NOT NULL DEFAULT 'GLOBAL',
+            PRIMARY KEY (role_id, permission, server_scope),
+            FOREIGN KEY (role_id) REFERENCES gf_roles(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        """);
+
+// Falls Tabelle schon existiert → Spalte server_scope nachziehen
+            try {
+                st.executeUpdate("""
+            ALTER TABLE gf_role_permissions
+            ADD COLUMN IF NOT EXISTS server_scope VARCHAR(64) NOT NULL DEFAULT 'GLOBAL'
+            """);
+            } catch (SQLException e) {
+                logger.debug("gf_role_permissions: Spalte 'server_scope' existiert evtl. bereits.", e);
+            }
+
 
             // ===========================
             // SESSIONS (/seen, /check)
