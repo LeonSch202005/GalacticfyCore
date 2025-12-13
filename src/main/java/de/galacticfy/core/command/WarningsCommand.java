@@ -5,6 +5,7 @@ import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
+import de.galacticfy.core.service.PlayerIdentityCacheService;
 import de.galacticfy.core.service.PunishmentService;
 import de.galacticfy.core.service.PunishmentService.Punishment;
 import de.galacticfy.core.service.PunishmentService.PunishmentType;
@@ -19,20 +20,21 @@ import java.util.stream.Collectors;
 public class WarningsCommand implements SimpleCommand {
 
     private static final String PERM_WARNINGS = "galacticfy.punish.warnings";
-
-    private static final DateTimeFormatter DATE_FORMAT =
-            DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
 
     private final ProxyServer proxy;
-    private final GalacticfyPermissionService perms;
     private final PunishmentService punishmentService;
+    private final GalacticfyPermissionService perms;
+    private final PlayerIdentityCacheService identityCache;
 
     public WarningsCommand(ProxyServer proxy,
+                           PunishmentService punishmentService,
                            GalacticfyPermissionService perms,
-                           PunishmentService punishmentService) {
+                           PlayerIdentityCacheService identityCache) {
         this.proxy = proxy;
-        this.perms = perms;
         this.punishmentService = punishmentService;
+        this.perms = perms;
+        this.identityCache = identityCache;
     }
 
     private Component prefix() {
@@ -41,9 +43,7 @@ public class WarningsCommand implements SimpleCommand {
 
     private boolean hasWarningsPermission(CommandSource src) {
         if (src instanceof Player p) {
-            if (perms != null) {
-                return perms.hasPluginPermission(p, PERM_WARNINGS);
-            }
+            if (perms != null) return perms.hasPluginPermission(p, PERM_WARNINGS);
             return p.hasPermission(PERM_WARNINGS);
         }
         return true;
@@ -51,7 +51,6 @@ public class WarningsCommand implements SimpleCommand {
 
     @Override
     public void execute(Invocation invocation) {
-
         CommandSource src = invocation.source();
         String[] args = invocation.arguments();
 
@@ -61,50 +60,83 @@ public class WarningsCommand implements SimpleCommand {
         }
 
         if (args.length < 1) {
-            src.sendMessage(prefix().append(Component.text(
-                    "§eBenutzung: §b/warnings <Spieler>"
-            )));
+            src.sendMessage(prefix().append(Component.text("§eBenutzung: §b/warnings <spieler> [Seite]")));
             return;
         }
 
         String targetName = args[0];
 
-        UUID uuid = proxy.getPlayer(targetName)
-                .map(Player::getUniqueId)
-                .orElse(null);
+        int page = 1;
+        if (args.length >= 2) {
+            try {
+                page = Integer.parseInt(args[1]);
+                if (page <= 0) page = 1;
+            } catch (NumberFormatException ignored) {
+                page = 1;
+            }
+        }
 
-        // Du brauchst in PunishmentService:
-        // List<Punishment> getWarns(UUID uuid, String name, int limit)
-        List<Punishment> warns = punishmentService.getWarns(uuid, targetName, 100);
+        Player online = proxy.getPlayer(targetName).orElse(null);
 
-        warns = warns.stream()
+        UUID uuid = null;
+        String storedName = targetName;
+
+        if (online != null) {
+            uuid = online.getUniqueId();
+            storedName = online.getUsername();
+        } else {
+            if (identityCache != null) {
+                uuid = identityCache.findUuidByName(targetName).orElse(null);
+                if (uuid != null) storedName = identityCache.findNameByUuid(uuid).orElse(storedName);
+            }
+        }
+
+        // Wir holen History und filtern WARN
+        List<Punishment> history = (List<Punishment>) punishmentService.getHistory(uuid, storedName, 500);
+        List<Punishment> warns = history.stream()
                 .filter(p -> p.type == PunishmentType.WARN)
-                .sorted(Comparator.comparing(p -> p.createdAt))
+                .sorted(Comparator.comparing((Punishment p) -> p.createdAt).reversed())
                 .collect(Collectors.toList());
 
+        int perPage = 8;
+        int totalPages = Math.max(1, (int) Math.ceil(warns.size() / (double) perPage));
+        if (page > totalPages) page = totalPages;
+
+        int start = (page - 1) * perPage;
+        int end = Math.min(start + perPage, warns.size());
+
+        List<Punishment> pageList = warns.subList(start, end);
+
         src.sendMessage(Component.text(" "));
-        src.sendMessage(prefix().append(Component.text("§bWarns für §f" + targetName)));
+        src.sendMessage(prefix().append(Component.text(
+                "§eWarnings für §f" + storedName + " §7(Seite " + page + "§7/§3" + totalPages + "§7)"
+        )));
         src.sendMessage(Component.text("§8§m────────────────────────────────"));
 
-        if (warns.isEmpty()) {
-            src.sendMessage(Component.text("§7Keine Warns vorhanden."));
+        if (pageList.isEmpty()) {
+            src.sendMessage(Component.text("§7Keine Verwarnungen gefunden."));
         } else {
-            int i = 1;
-            for (Punishment p : warns) {
-                String date = p.createdAt != null
-                        ? DATE_FORMAT.format(LocalDateTime.ofInstant(p.createdAt, ZoneId.systemDefault()))
-                        : "-";
+            for (Punishment p : pageList) {
+                String date = "-";
+                if (p.createdAt != null) {
+                    LocalDateTime ldt = LocalDateTime.ofInstant(p.createdAt, ZoneId.systemDefault());
+                    date = DATE_FORMAT.format(ldt);
+                }
+
+                String idText = (p.id > 0 ? String.valueOf(p.id) : "-");
+
 
                 src.sendMessage(Component.text(
-                        "§8#§e" + i + " §7am §f" + date +
-                                " §8| §7Von: §f" + p.staff +
-                                "\n   §7Grund: §f" + p.reason
+                        "§e⚠ §7ID: §f" + idText +
+                                " §8| §7am §f" + date +
+                                " §8| §7von §f" + p.staff + "\n" +
+                                " §7Grund: §f" + p.reason
                 ));
-                i++;
             }
         }
 
         src.sendMessage(Component.text("§8§m────────────────────────────────"));
+        src.sendMessage(Component.text("§7Seiten: §f/warnings " + storedName + " <1-" + totalPages + ">"));
         src.sendMessage(Component.text(" "));
     }
 
@@ -115,31 +147,28 @@ public class WarningsCommand implements SimpleCommand {
 
     @Override
     public List<String> suggest(Invocation invocation) {
-        if (!hasWarningsPermission(invocation.source())) {
-            return List.of();
-        }
+        if (!hasWarningsPermission(invocation.source())) return List.of();
 
         String[] args = invocation.arguments();
-
-        if (args.length == 0) {
-            Set<String> names = new LinkedHashSet<>();
-            names.addAll(punishmentService.getAllPunishedNames());
-            proxy.getAllPlayers().forEach(p -> names.add(p.getUsername()));
-            return names.stream().sorted(String.CASE_INSENSITIVE_ORDER).toList();
-        }
-
-        if (args.length == 1) {
-            String prefix = args[0].toLowerCase(Locale.ROOT);
-            Set<String> names = new LinkedHashSet<>();
-            names.addAll(punishmentService.getAllPunishedNames());
-            proxy.getAllPlayers().forEach(p -> names.add(p.getUsername()));
-
-            return names.stream()
-                    .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(prefix))
-                    .sorted(String.CASE_INSENSITIVE_ORDER)
-                    .toList();
-        }
-
+        if (args.length == 0) return suggestNames("");
+        if (args.length == 1) return suggestNames(args[0]);
+        if (args.length == 2) return List.of("1", "2", "3", "4", "5");
         return List.of();
+    }
+
+    private List<String> suggestNames(String prefixRaw) {
+        String prefix = (prefixRaw == null ? "" : prefixRaw).toLowerCase(Locale.ROOT);
+
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        proxy.getAllPlayers().forEach(p -> {
+            String n = p.getUsername();
+            if (n != null && n.toLowerCase(Locale.ROOT).startsWith(prefix)) out.add(n);
+        });
+
+        try {
+            out.addAll(punishmentService.findKnownNames(prefix, 25));
+        } catch (Throwable ignored) {}
+
+        return out.stream().sorted(String.CASE_INSENSITIVE_ORDER).limit(40).collect(Collectors.toList());
     }
 }

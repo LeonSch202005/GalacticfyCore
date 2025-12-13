@@ -18,7 +18,6 @@ import de.galacticfy.core.motd.GalacticfyMotdProvider;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
 import de.galacticfy.core.service.*;
 import de.galacticfy.core.util.DiscordWebhookNotifier;
-import net.kyori.adventure.text.Component;
 import org.slf4j.Logger;
 
 import java.time.Duration;
@@ -39,26 +38,28 @@ public class GalacticfyCore {
     private ServerTeleportService teleportService;
     private MaintenanceService maintenanceService;
     private FreezeService freezeService;
-
     private DatabaseManager databaseManager;
     private GalacticfyPermissionService permissionService;
     private DiscordWebhookNotifier discordNotifier;
     private SessionService sessionService;
     private ChatFilterService chatFilterService;
-
     private PunishmentService punishmentService;
     private ReportService reportService;
     private EconomyService economyService;
     private DailyRewardService dailyRewardService;
     private QuestService questService;
-
     private MessageService messageService;
     private AutoBroadcastService autoBroadcastService;
+
+    // Identity Cache (Name<->UUID)
+    private PlayerIdentityCacheService identityCacheService;
+
+    // Report Cooldown
+    private ReportCooldownService reportCooldownService;
 
     // Plugin-Message-Channel für Quest-GUI (Proxy -> Spigot UND CLAIM zurück)
     private static final ChannelIdentifier QUESTS_CHANNEL =
             MinecraftChannelIdentifier.create("galacticfy", "quests");
-
     // Plugin-Message-Channel für Quest-Stats (von Spigot)
     private static final ChannelIdentifier QUESTS_STATS_CHANNEL =
             MinecraftChannelIdentifier.create("galacticfy", "queststats");
@@ -82,25 +83,30 @@ public class GalacticfyCore {
         this.databaseManager.init();
         new DatabaseMigrationService(databaseManager, logger).runMigrations();
 
-        this.sessionService     = new SessionService(databaseManager, logger);
-        this.economyService     = new EconomyService(databaseManager, logger);
+        this.sessionService = new SessionService(databaseManager, logger);
+        this.economyService = new EconomyService(databaseManager, logger);
         this.dailyRewardService = new DailyRewardService(databaseManager, economyService, logger);
 
         // ==============================
         // Services
         // ==============================
-        this.teleportService    = new ServerTeleportService(proxy, logger);
+        this.teleportService = new ServerTeleportService(proxy, logger);
         this.maintenanceService = new MaintenanceService(logger, databaseManager);
-        this.freezeService      = new FreezeService(proxy);
-        this.chatFilterService  = new ChatFilterService();
+        this.freezeService = new FreezeService(proxy);
+        this.chatFilterService = new ChatFilterService();
+        this.permissionService = new GalacticfyPermissionService(databaseManager, logger);
+        this.punishmentService = new PunishmentService(databaseManager, logger);
+        this.reportService = new ReportService(databaseManager, logger);
+        this.messageService = new MessageService(proxy, logger);
 
-        this.permissionService  = new GalacticfyPermissionService(databaseManager, logger);
-        this.punishmentService  = new PunishmentService(databaseManager, logger);
-        this.reportService      = new ReportService(databaseManager, logger);
-
-        this.messageService     = new MessageService(proxy, logger);
         this.autoBroadcastService = new AutoBroadcastService(proxy, messageService, logger, this);
         autoBroadcastService.start();
+
+        // ==============================
+        // Identity Cache + Report Cooldown
+        // ==============================
+        this.identityCacheService = new PlayerIdentityCacheService(databaseManager, logger);
+        this.reportCooldownService = new ReportCooldownService(logger);
 
         // ==============================
         // Quests + GUI (OHNE Community)
@@ -117,8 +123,7 @@ public class GalacticfyCore {
                     proxy.getAllPlayers().forEach(player -> {
                         UUID uuid = player.getUniqueId();
                         String name = player.getUsername();
-
-                        BiConsumer<UUID, Component> sender =
+                        BiConsumer<UUID, net.kyori.adventure.text.Component> sender =
                                 (u, comp) -> proxy.getPlayer(u).ifPresent(p -> p.sendMessage(comp));
 
                         // 1 Minute Spielzeit hinzufügen → triggert Daily/Weekly/Monthly-Quests
@@ -143,13 +148,8 @@ public class GalacticfyCore {
         // ==============================
         // Quest-Command
         // ==============================
-        // ==============================
-        // Quest-Command
-        // ==============================
         CommandMeta questsMeta = commandManager.metaBuilder("quests").build();
         commandManager.register(questsMeta, new QuestCommand(questService, questGuiMessenger, proxy));
-
-
 
         // ==============================
         // Teleport- & Utility-Commands
@@ -204,75 +204,69 @@ public class GalacticfyCore {
                 .build();
         commandManager.register(proxyInfoMeta, new ProxyInfoCommand(proxy));
 
+        // Reports GUI/Staff Command (dein /reports)
         CommandMeta reportsMeta = commandManager.metaBuilder("reports").build();
-        commandManager.register(reportsMeta, new ReportsCommand(reportService));
+        commandManager.register(reportsMeta, new ReportsCommand(proxy, permissionService, reportService, teleportService));
 
+        // UPDATED: /seen kann jetzt offline
         CommandMeta seenMeta = commandManager.metaBuilder("seen").build();
-        commandManager.register(seenMeta, new SeenCommand(proxy, permissionService, sessionService));
+        commandManager.register(seenMeta, new SeenCommand(proxy, permissionService, sessionService, identityCacheService));
 
         // ==============================
         // Punishment-Commands
         // ==============================
         CommandMeta banMeta = commandManager.metaBuilder("ban").build();
-        commandManager.register(banMeta,
-                new BanCommand(proxy, permissionService, punishmentService, discordNotifier));
+        commandManager.register(banMeta, new BanCommand(proxy, permissionService, punishmentService, discordNotifier, identityCacheService));
 
         CommandMeta banIpMeta = commandManager.metaBuilder("banip").build();
-        commandManager.register(banIpMeta,
-                new BanIpCommand(proxy, permissionService, punishmentService, discordNotifier));
+        commandManager.register(banIpMeta, new BanIpCommand(proxy, permissionService, punishmentService, discordNotifier, identityCacheService));
 
         CommandMeta unbanMeta = commandManager.metaBuilder("unban").build();
-        commandManager.register(unbanMeta,
-                new UnbanCommand(punishmentService, permissionService));
+        commandManager.register(unbanMeta, new UnbanCommand(punishmentService, permissionService, proxy, identityCacheService));
 
         CommandMeta muteMeta = commandManager.metaBuilder("mute").build();
-        commandManager.register(muteMeta,
-                new MuteCommand(proxy, permissionService, punishmentService, discordNotifier));
+        commandManager.register(muteMeta, new MuteCommand(proxy, permissionService, punishmentService, discordNotifier, identityCacheService));
 
         CommandMeta unmuteMeta = commandManager.metaBuilder("unmute").build();
-        commandManager.register(unmuteMeta,
-                new UnmuteCommand(punishmentService, permissionService));
+        commandManager.register(unmuteMeta, new UnmuteCommand(punishmentService, permissionService, proxy, identityCacheService));
 
         CommandMeta kickMeta = commandManager.metaBuilder("kick").build();
-        commandManager.register(kickMeta,
-                new KickCommand(proxy, permissionService, punishmentService, discordNotifier));
+        commandManager.register(kickMeta, new KickCommand(proxy, permissionService, punishmentService, discordNotifier));
 
         CommandMeta historyMeta = commandManager.metaBuilder("history").build();
-        commandManager.register(historyMeta,
-                new HistoryCommand(proxy, punishmentService, permissionService));
+        commandManager.register(historyMeta, new HistoryCommand(proxy, punishmentService, permissionService, identityCacheService));
 
         CommandMeta checkMeta = commandManager.metaBuilder("check").build();
-        commandManager.register(checkMeta,
-                new CheckCommand(proxy, permissionService, punishmentService));
+        commandManager.register(checkMeta, new CheckCommand(proxy, permissionService, punishmentService, identityCacheService));
 
         CommandMeta warningsMeta = commandManager.metaBuilder("warnings").build();
-        commandManager.register(warningsMeta,
-                new WarningsCommand(proxy, permissionService, punishmentService));
+        commandManager.register(warningsMeta, new WarningsCommand(proxy, punishmentService, permissionService, identityCacheService));
 
         CommandMeta warnMeta = commandManager.metaBuilder("warn").build();
-        commandManager.register(warnMeta,
-                new WarnCommand(proxy, permissionService, punishmentService, discordNotifier));
+        commandManager.register(warnMeta, new WarnCommand(proxy, permissionService, punishmentService, discordNotifier, identityCacheService));
 
+        // ==============================
+        // Report Command (/report) – mit Cache + Cooldown
+        // ==============================
         CommandMeta reportMeta = commandManager.metaBuilder("report").build();
-        commandManager.register(reportMeta,
-                new ReportCommand(proxy, permissionService, reportService));
+        commandManager.register(reportMeta, new ReportCommand(proxy, permissionService, reportService, identityCacheService, reportCooldownService));
+
+        CommandMeta unwarnMeta = commandManager.metaBuilder("unwarn").build();
+        commandManager.register(unwarnMeta, new UnwarnCommand(proxy, punishmentService, permissionService, identityCacheService));
 
         // ==============================
         // Broadcast / Alert / Announce
         // ==============================
         CommandMeta alertMeta = commandManager.metaBuilder("alert").build();
-        commandManager.register(alertMeta,
-                new AlertCommand(messageService, permissionService));
+        commandManager.register(alertMeta, new AlertCommand(messageService, permissionService));
 
         CommandMeta announceMeta = commandManager.metaBuilder("announce").build();
-        commandManager.register(announceMeta,
-                new AnnounceCommand(messageService, permissionService));
+        commandManager.register(announceMeta, new AnnounceCommand(messageService, permissionService));
 
         CommandMeta broadcastMeta = commandManager.metaBuilder("broadcast")
                 .aliases("bc")
                 .build();
-        commandManager.register(broadcastMeta,
-                new BroadcastCommand(messageService, permissionService));
+        commandManager.register(broadcastMeta, new BroadcastCommand(messageService, permissionService));
 
         CommandMeta autoBcMeta = commandManager.metaBuilder("autobc").build();
         commandManager.register(autoBcMeta, new AutoBroadcastCommand(autoBroadcastService));
@@ -293,35 +287,25 @@ public class GalacticfyCore {
         CommandMeta staffMeta = commandManager.metaBuilder("staffchat")
                 .aliases("sc")
                 .build();
-        commandManager.register(staffMeta,
-                new StaffChatCommand(proxy, permissionService));
+        commandManager.register(staffMeta, new StaffChatCommand(proxy, permissionService));
 
         CommandMeta staffListMeta = commandManager.metaBuilder("staff").build();
-        commandManager.register(staffListMeta,
-                new StaffCommand(proxy, permissionService));
-
-        CommandMeta unwarnMeta = commandManager.metaBuilder("unwarn").build();
-        commandManager.register(unwarnMeta,
-                new UnwarnCommand(proxy, permissionService, punishmentService));
+        commandManager.register(staffListMeta, new StaffCommand(proxy, permissionService));
 
         // ==============================
         // Economy-Commands
         // ==============================
         CommandMeta moneyMeta = commandManager.metaBuilder("money").build();
-        commandManager.register(moneyMeta,
-                new MoneyCommand(proxy, economyService, permissionService));
+        commandManager.register(moneyMeta, new MoneyCommand(proxy, economyService, permissionService));
 
         CommandMeta payMeta = commandManager.metaBuilder("pay").build();
-        commandManager.register(payMeta,
-                new PayCommand(proxy, economyService, permissionService));
+        commandManager.register(payMeta, new PayCommand(proxy, economyService, permissionService));
 
         CommandMeta ecoMeta = commandManager.metaBuilder("eco").build();
-        commandManager.register(ecoMeta,
-                new EcoCommand(proxy, economyService, permissionService));
+        commandManager.register(ecoMeta, new EcoCommand(proxy, economyService, permissionService));
 
         CommandMeta baltopMeta = commandManager.metaBuilder("baltop").build();
-        commandManager.register(baltopMeta,
-                new BaltopCommand(economyService));
+        commandManager.register(baltopMeta, new BaltopCommand(economyService));
 
         // ==============================
         // Daily-Reward-Command
@@ -329,47 +313,27 @@ public class GalacticfyCore {
         CommandMeta dailyMeta = commandManager.metaBuilder("daily")
                 .aliases("dailyreward")
                 .build();
-        commandManager.register(dailyMeta,
-                new DailyCommand(dailyRewardService, permissionService, proxy));
+        commandManager.register(dailyMeta, new DailyCommand(dailyRewardService, permissionService, proxy));
 
         // ==============================
         // Listener
         // ==============================
         proxy.getEventManager().register(this, new EconomyListener(economyService));
+        proxy.getEventManager().register(this, new ConnectionProtectionListener(logger, proxy, maintenanceService));
+        proxy.getEventManager().register(this, new GalacticfyMotdProvider(maintenanceService));
+        proxy.getEventManager().register(this, new FreezeListener(freezeService));
+        proxy.getEventManager().register(this, new MaintenanceListener(maintenanceService, logger, permissionService));
+        proxy.getEventManager().register(this, new PermissionsSetupListener(permissionService, logger));
+        proxy.getEventManager().register(this, new TablistPrefixListener(proxy, permissionService, logger));
+        proxy.getEventManager().register(this, new PunishmentLoginListener(punishmentService, logger, proxy, permissionService));
+        proxy.getEventManager().register(this, new ChatFilterListener(chatFilterService));
+        proxy.getEventManager().register(this, new ReportJoinNotifyListener(reportService, permissionService));
 
-        proxy.getEventManager().register(this,
-                new ConnectionProtectionListener(logger, proxy, maintenanceService));
-
-        proxy.getEventManager().register(this,
-                new GalacticfyMotdProvider(maintenanceService));
-
-        proxy.getEventManager().register(this,
-                new FreezeListener(freezeService));
-
-        proxy.getEventManager().register(this,
-                new MaintenanceListener(maintenanceService, logger, permissionService));
-
-        proxy.getEventManager().register(this,
-                new PermissionsSetupListener(permissionService, logger));
-
-        proxy.getEventManager().register(this,
-                new TablistPrefixListener(proxy, permissionService, logger));
-
-        proxy.getEventManager().register(this,
-                new PunishmentLoginListener(punishmentService, logger, proxy, permissionService));
-
-        proxy.getEventManager().register(this,
-                new ChatFilterListener(chatFilterService));
-
-        proxy.getEventManager().register(this,
-                new ReportJoinListener(reportService, permissionService, logger));
-
-        proxy.getEventManager().register(this,
-                new SessionListener(sessionService, questService, logger));
+        // UPDATED: SessionListener braucht identityCacheService
+        proxy.getEventManager().register(this, new SessionListener(sessionService, questService, identityCacheService, logger));
 
         // Quest-Stat-Listener (für Fischen, Blöcke, etc.)
-        proxy.getEventManager().register(this,
-                new QuestEventListener(questService, QUESTS_STATS_CHANNEL, proxy, logger));
+        proxy.getEventManager().register(this, new QuestEventListener(questService, QUESTS_STATS_CHANNEL, proxy, logger));
 
         logger.info("GalacticfyCore: Commands, Listener, Punishment-, Report-, Economy-, Daily- & Questsystem registriert (ohne Community-Quests).");
     }
@@ -379,10 +343,10 @@ public class GalacticfyCore {
         logger.info("GalacticfyCore fährt herunter, schließe Ressourcen...");
 
         if (autoBroadcastService != null) autoBroadcastService.shutdown();
-        if (maintenanceService != null)   maintenanceService.shutdown();
-        if (discordNotifier != null)      discordNotifier.shutdown();
-        if (databaseManager != null)      databaseManager.shutdown();
-        if (punishmentService != null)    punishmentService.shutdown();
+        if (maintenanceService != null) maintenanceService.shutdown();
+        if (discordNotifier != null) discordNotifier.shutdown();
+        if (databaseManager != null) databaseManager.shutdown();
+        if (punishmentService != null) punishmentService.shutdown();
 
         logger.info("GalacticfyCore: Shutdown abgeschlossen.");
     }

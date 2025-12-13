@@ -36,14 +36,12 @@ public class ReportService {
     // NEUEN REPORT SPEICHERN
     // ============================================================
 
-    public void addReport(String targetName,
-                          String reporterName,
-                          String reason,
-                          String serverName,
-                          String presetKey) {
+    public void addReport(String targetName, String reporterName, String reason, String serverName, String presetKey) {
         if (targetName == null || targetName.isBlank()) return;
+
         if (reporterName == null || reporterName.isBlank()) reporterName = "Unbekannt";
         if (reason == null || reason.isBlank()) reason = "Kein Grund angegeben";
+        if (serverName == null || serverName.isBlank()) serverName = "Unbekannt";
 
         String sql = """
                 INSERT INTO gf_reports
@@ -58,6 +56,7 @@ public class ReportService {
             ps.setString(2, targetName);
             ps.setString(3, serverName);
             ps.setString(4, reason);
+
             if (presetKey != null && !presetKey.isBlank()) {
                 ps.setString(5, presetKey.toLowerCase(Locale.ROOT));
             } else {
@@ -65,10 +64,8 @@ public class ReportService {
             }
 
             ps.executeUpdate();
-
         } catch (SQLException e) {
-            logger.error("Fehler beim Speichern eines Reports (target={}, reporter={})",
-                    targetName, reporterName, e);
+            logger.error("Fehler beim Speichern eines Reports (target={}, reporter={})", targetName, reporterName, e);
         }
     }
 
@@ -131,10 +128,6 @@ public class ReportService {
         return out;
     }
 
-    // ============================================================
-    // OFFENE REPORTS LADEN
-    // ============================================================
-
     public List<ReportEntry> getOpenReports() {
         List<ReportEntry> out = new ArrayList<>();
 
@@ -161,11 +154,134 @@ public class ReportService {
         return out;
     }
 
+    public ReportEntry getReportById(long id) {
+        String sql = """
+                SELECT id, created_at, reporter_name, target_name, server_name, reason, preset_key,
+                       handled, handled_by, handled_at
+                FROM gf_reports
+                WHERE id = ?
+                """;
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setLong(1, id);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return mapEntry(rs);
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.error("Fehler beim Laden eines Reports per ID (id={})", id, e);
+        }
+
+        return null;
+    }
+
     // ============================================================
-    // REPORT ALS BEARBEITET MARKIEREN
+    // CLAIM / UNCLAIM
+    // ============================================================
+
+    public boolean claimReport(long id, String staffName) {
+        if (staffName == null || staffName.isBlank()) staffName = "Unbekannt";
+
+        // Claim nur wenn offen UND noch unclaimed
+        String sql = """
+                UPDATE gf_reports
+                SET handled_by = ?
+                WHERE id = ?
+                  AND handled = 0
+                  AND (handled_by IS NULL OR handled_by = '')
+                """;
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, staffName);
+            ps.setLong(2, id);
+            return ps.executeUpdate() > 0;
+
+        } catch (SQLException e) {
+            logger.error("Fehler beim Claim eines Reports (id={}, staff={})", id, staffName, e);
+            return false;
+        }
+    }
+
+    /**
+     * Unclaim:
+     * - Wenn staffName = null => Admin: unclaim immer (sofern offen)
+     * - Wenn staffName != null => nur wenn genau dieser Staff geclaimt hat
+     */
+    public boolean unclaimReport(long id, String staffName) {
+        String sqlAdmin = """
+                UPDATE gf_reports
+                SET handled_by = NULL
+                WHERE id = ?
+                  AND handled = 0
+                """;
+
+        String sqlSelf = """
+                UPDATE gf_reports
+                SET handled_by = NULL
+                WHERE id = ?
+                  AND handled = 0
+                  AND handled_by = ?
+                """;
+
+        try (Connection con = db.getConnection()) {
+            if (staffName == null) {
+                try (PreparedStatement ps = con.prepareStatement(sqlAdmin)) {
+                    ps.setLong(1, id);
+                    return ps.executeUpdate() > 0;
+                }
+            } else {
+                try (PreparedStatement ps = con.prepareStatement(sqlSelf)) {
+                    ps.setLong(1, id);
+                    ps.setString(2, staffName);
+                    return ps.executeUpdate() > 0;
+                }
+            }
+        } catch (SQLException e) {
+            logger.error("Fehler beim Unclaim eines Reports (id={}, staff={})", id, staffName, e);
+            return false;
+        }
+    }
+
+    public boolean isClaimedBy(long id, String staffName) {
+        if (staffName == null || staffName.isBlank()) return false;
+
+        String sql = """
+                SELECT handled_by
+                FROM gf_reports
+                WHERE id = ?
+                """;
+
+        try (Connection con = db.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setLong(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String handledBy = rs.getString(1);
+                    return handledBy != null && handledBy.equalsIgnoreCase(staffName);
+                }
+            }
+        } catch (SQLException e) {
+            logger.error("Fehler bei isClaimedBy(id={}, staff={})", id, staffName, e);
+        }
+
+        return false;
+    }
+
+    // ============================================================
+    // REPORT ALS BEARBEITET MARKIEREN (CLOSE)
     // ============================================================
 
     public boolean markReportHandled(long id, String staffName) {
+        if (staffName == null || staffName.isBlank()) staffName = "Unbekannt";
+
         String sql = """
                 UPDATE gf_reports
                 SET handled = 1,
@@ -178,14 +294,12 @@ public class ReportService {
         try (Connection con = db.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
 
-            ps.setString(1, (staffName != null && !staffName.isBlank()) ? staffName : "Unbekannt");
+            ps.setString(1, staffName);
             ps.setLong(2, id);
-
-            int updated = ps.executeUpdate();
-            return updated > 0;
+            return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            logger.error("Fehler beim Markieren eines Reports als bearbeitet (id={})", id, e);
+            logger.error("Fehler beim Schließen eines Reports (id={})", id, e);
             return false;
         }
     }
@@ -196,49 +310,37 @@ public class ReportService {
 
     public int countAllReports() {
         String sql = "SELECT COUNT(*) FROM gf_reports";
-
         try (Connection con = db.getConnection();
              PreparedStatement ps = con.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
-
-            if (rs.next()) {
-                return rs.getInt(1);
-            }
-
+            if (rs.next()) return rs.getInt(1);
         } catch (SQLException e) {
             logger.error("Fehler bei countAllReports()", e);
         }
         return 0;
     }
+
     public int countOpenReports() {
         String sql = "SELECT COUNT(*) FROM gf_reports WHERE handled = 0";
-
         try (Connection con = db.getConnection();
              PreparedStatement ps = con.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
-
-            if (rs.next()) {
-                return rs.getInt(1);
-            }
-
+            if (rs.next()) return rs.getInt(1);
         } catch (SQLException e) {
             logger.error("Fehler bei countOpenReports()", e);
         }
         return 0;
     }
 
-
     public boolean clearReportsFor(String targetName) {
         if (targetName == null || targetName.isBlank()) return false;
 
         String sql = "DELETE FROM gf_reports WHERE LOWER(target_name) = ?";
-
         try (Connection con = db.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
 
             ps.setString(1, targetName.toLowerCase(Locale.ROOT));
-            int updated = ps.executeUpdate();
-            return updated > 0;
+            return ps.executeUpdate() > 0;
 
         } catch (SQLException e) {
             logger.error("Fehler beim Löschen der Reports für {}", targetName, e);
@@ -248,12 +350,9 @@ public class ReportService {
 
     public int clearAll() {
         String sql = "DELETE FROM gf_reports";
-
         try (Connection con = db.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
-
             return ps.executeUpdate();
-
         } catch (SQLException e) {
             logger.error("Fehler beim Löschen aller Reports", e);
             return 0;
@@ -261,7 +360,7 @@ public class ReportService {
     }
 
     // ============================================================
-    // HILFE FÜR TAB-COMPLETE (reported Spieler)
+    // TAB-COMPLETE HELPERS
     // ============================================================
 
     public List<String> getReportedTargetNames() {
@@ -278,10 +377,8 @@ public class ReportService {
              ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
-                String name = rs.getString("target_name");
-                if (name != null && !name.isBlank()) {
-                    out.add(name);
-                }
+                String name = rs.getString(1);
+                if (name != null && !name.isBlank()) out.add(name);
             }
 
         } catch (SQLException e) {
@@ -297,8 +394,9 @@ public class ReportService {
 
     private ReportEntry mapEntry(ResultSet rs) throws SQLException {
         long id = rs.getLong("id");
-        Timestamp ts = rs.getTimestamp("created_at");
-        LocalDateTime created = ts != null ? ts.toLocalDateTime() : LocalDateTime.now();
+
+        Timestamp tsCreated = rs.getTimestamp("created_at");
+        LocalDateTime createdAt = (tsCreated != null) ? tsCreated.toLocalDateTime() : null;
 
         String reporter = rs.getString("reporter_name");
         String target = rs.getString("target_name");
@@ -306,21 +404,11 @@ public class ReportService {
         String reason = rs.getString("reason");
         String presetKey = rs.getString("preset_key");
 
-        boolean handled = false;
-        String handledBy = null;
-        LocalDateTime handledAt = null;
+        boolean handled = rs.getBoolean("handled");
+        String handledBy = rs.getString("handled_by");
 
-        // Falls Spalten existieren (sollten sie laut Migration)
-        try {
-            handled = rs.getBoolean("handled");
-            handledBy = rs.getString("handled_by");
-            Timestamp tsHandled = rs.getTimestamp("handled_at");
-            if (tsHandled != null) {
-                handledAt = tsHandled.toLocalDateTime();
-            }
-        } catch (SQLException ignored) {
-            // falls alte DB ohne Spalten – dann einfach default lassen
-        }
+        Timestamp tsHandled = rs.getTimestamp("handled_at");
+        LocalDateTime handledAt = (tsHandled != null) ? tsHandled.toLocalDateTime() : null;
 
         return new ReportEntry(
                 id,
@@ -329,7 +417,7 @@ public class ReportService {
                 reason,
                 server,
                 presetKey,
-                created,
+                createdAt,
                 handled,
                 handledBy,
                 handledAt

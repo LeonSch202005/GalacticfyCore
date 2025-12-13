@@ -5,6 +5,7 @@ import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
+import de.galacticfy.core.service.PlayerIdentityCacheService;
 import de.galacticfy.core.service.PunishmentService;
 import de.galacticfy.core.service.PunishmentService.Punishment;
 import net.kyori.adventure.text.Component;
@@ -19,20 +20,21 @@ import java.util.stream.Collectors;
 public class CheckCommand implements SimpleCommand {
 
     private static final String PERM_CHECK = "galacticfy.punish.check";
-
-    private static final DateTimeFormatter DATE_FORMAT =
-            DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
 
     private final ProxyServer proxy;
     private final GalacticfyPermissionService perms;
     private final PunishmentService punishmentService;
+    private final PlayerIdentityCacheService identityCache;
 
     public CheckCommand(ProxyServer proxy,
                         GalacticfyPermissionService perms,
-                        PunishmentService punishmentService) {
+                        PunishmentService punishmentService,
+                        PlayerIdentityCacheService identityCache) {
         this.proxy = proxy;
         this.perms = perms;
         this.punishmentService = punishmentService;
+        this.identityCache = identityCache;
     }
 
     private Component prefix() {
@@ -60,42 +62,51 @@ public class CheckCommand implements SimpleCommand {
         }
 
         if (args.length < 1) {
-            src.sendMessage(prefix().append(Component.text(
-                    "§eBenutzung: §b/check <Spieler>"
-            )));
+            src.sendMessage(prefix().append(Component.text("§eBenutzung: §b/check <spieler>")));
             return;
         }
 
         String targetName = args[0];
 
         Player online = proxy.getPlayer(targetName).orElse(null);
-        UUID uuid = online != null ? online.getUniqueId() : null;
-        String storedName = online != null ? online.getUsername() : targetName;
 
+        UUID uuid = null;
+        String storedName = targetName;
         String serverName = "Offline";
+
         if (online != null) {
+            uuid = online.getUniqueId();
+            storedName = online.getUsername();
             serverName = online.getCurrentServer()
                     .map(conn -> conn.getServerInfo().getName())
                     .orElse("Unbekannt");
+        } else {
+            // Offline -> UUID via Cache/DB (wenn vorhanden)
+            if (identityCache != null) {
+                uuid = identityCache.findUuidByName(targetName).orElse(null);
+                if (uuid != null) {
+                    storedName = identityCache.findNameByUuid(uuid).orElse(storedName);
+                }
+            }
         }
 
         String ip = null;
-
         if (online != null) {
             Object remote = online.getRemoteAddress();
             if (remote instanceof InetSocketAddress isa && isa.getAddress() != null) {
                 ip = isa.getAddress().getHostAddress();
             }
         } else {
+            // offline: wenn uuid da ist -> genauer
             ip = punishmentService.getLastKnownIp(uuid, storedName);
         }
 
         String ipText = (ip != null) ? ip : "Unbekannt";
 
-        Punishment activeBan  = punishmentService.getActiveBanForCheck(uuid, storedName, ip);
+        Punishment activeBan = punishmentService.getActiveBanForCheck(uuid, storedName, ip);
         Punishment activeMute = punishmentService.getActiveMuteForCheck(uuid, storedName, ip);
         int warnCount = punishmentService.countWarns(uuid, storedName);
-        List<Punishment> history = punishmentService.getHistory(uuid, storedName, 3);
+        List history = punishmentService.getHistory(uuid, storedName, 3);
 
         src.sendMessage(Component.text(" "));
         src.sendMessage(prefix().append(Component.text("§bCheck für §f" + storedName)));
@@ -107,11 +118,15 @@ public class CheckCommand implements SimpleCommand {
         src.sendMessage(Component.text("§7Letzte IP: §f" + ipText));
         src.sendMessage(Component.text("§7Aktive Warns: §e" + warnCount));
 
+        // ===== FIX: Variablen für Lambdas final machen =====
+        final UUID finalUuid = uuid;
+
         if (ip != null) {
             final String finalIp = ip;
 
             List<String> altsOnline = proxy.getAllPlayers().stream()
-                    .filter(p -> uuid == null || !p.getUniqueId().equals(uuid))
+                    // FIX: alle außer "target" (wenn uuid bekannt)
+                    .filter(p -> finalUuid == null || !p.getUniqueId().equals(finalUuid))
                     .filter(p -> {
                         Object r = p.getRemoteAddress();
                         if (r instanceof InetSocketAddress other && other.getAddress() != null) {
@@ -136,7 +151,6 @@ public class CheckCommand implements SimpleCommand {
 
         if (ip != null) {
             List<String> altsHistory = punishmentService.findAltsByIp(ip, uuid, 25);
-
             if (altsHistory.isEmpty()) {
                 src.sendMessage(Component.text("§7IP-ALTs (History): §aKeine gefunden"));
             } else {
@@ -181,12 +195,13 @@ public class CheckCommand implements SimpleCommand {
         if (history.isEmpty()) {
             src.sendMessage(Component.text("§8• §7Keine History."));
         } else {
-            for (Punishment p : history) {
+            for (Punishment p : (List<Punishment>) history) {
                 String icon;
                 String color;
+
                 switch (p.type) {
                     case BAN -> { icon = "⛔"; color = "§c"; }
-                    case IP_BAN -> { icon = "🖥"; color = "§4"; }
+                    case IP_BAN -> { icon = "⛔"; color = "§4"; }
                     case MUTE -> { icon = "🔇"; color = "§6"; }
                     case KICK -> { icon = "👢"; color = "§e"; }
                     case WARN -> { icon = "⚠"; color = "§e"; }
@@ -220,29 +235,22 @@ public class CheckCommand implements SimpleCommand {
 
     @Override
     public List<String> suggest(Invocation invocation) {
-        if (!hasCheckPermission(invocation.source())) {
-            return List.of();
-        }
+        if (!hasCheckPermission(invocation.source())) return List.of();
 
         String[] args = invocation.arguments();
-
         if (args.length == 0 || args.length == 1) {
-            String prefix = args.length == 0 ? "" : args[0].toLowerCase(Locale.ROOT);
+            String prefix = (args.length == 0 ? "" : args[0]).toLowerCase(Locale.ROOT);
 
             Set<String> result = new LinkedHashSet<>();
-
             result.addAll(punishmentService.findKnownNames(prefix, 30));
 
             proxy.getAllPlayers().forEach(p -> {
                 String n = p.getUsername();
-                if (n.toLowerCase(Locale.ROOT).startsWith(prefix)) {
-                    result.add(n);
-                }
+                if (n.toLowerCase(Locale.ROOT).startsWith(prefix)) result.add(n);
             });
 
             return new ArrayList<>(result);
         }
-
         return List.of();
     }
 }

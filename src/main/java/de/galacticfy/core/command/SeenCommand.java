@@ -5,13 +5,17 @@ import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.Player;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
+import de.galacticfy.core.service.PlayerIdentityCacheService;
 import de.galacticfy.core.service.SessionService;
 import de.galacticfy.core.service.SessionService.SessionInfo;
 import net.kyori.adventure.text.Component;
 
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.UUID;
 
 public class SeenCommand implements SimpleCommand {
 
@@ -20,17 +24,20 @@ public class SeenCommand implements SimpleCommand {
     private final ProxyServer proxy;
     private final GalacticfyPermissionService perms;
     private final SessionService sessions;
-    private final DateTimeFormatter fmt =
-            DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss")
-                    .withLocale(Locale.GERMANY)
-                    .withZone(ZoneId.systemDefault());
+    private final PlayerIdentityCacheService identityCache;
+
+    private final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss")
+            .withLocale(Locale.GERMANY)
+            .withZone(ZoneId.systemDefault());
 
     public SeenCommand(ProxyServer proxy,
                        GalacticfyPermissionService perms,
-                       SessionService sessions) {
+                       SessionService sessions,
+                       PlayerIdentityCacheService identityCache) {
         this.proxy = proxy;
         this.perms = perms;
         this.sessions = sessions;
+        this.identityCache = identityCache;
     }
 
     private Component prefix() {
@@ -48,42 +55,58 @@ public class SeenCommand implements SimpleCommand {
         }
 
         if (args.length < 1) {
-            src.sendMessage(prefix().append(Component.text("§eBenutzung: §b/seen <Spieler>")));
+            src.sendMessage(prefix().append(Component.text("§eBenutzung: §b/seen <spieler>")));
             return;
         }
 
-        String target = args[0];
+        String targetName = args[0];
 
-        Optional<Player> opt = proxy.getPlayer(target);
-        if (opt.isEmpty()) {
-            src.sendMessage(prefix().append(Component.text(
-                    "§7Der Spieler §e" + target + " §7war entweder noch nie online oder ist aktuell nicht bekannt."
-            )));
-            return;
+        // 1) Online-Check
+        Optional<Player> online = proxy.getPlayer(targetName);
+        UUID uuid;
+        String displayName;
+
+        if (online.isPresent()) {
+            Player p = online.get();
+            uuid = p.getUniqueId();
+            displayName = p.getUsername();
+        } else {
+            // 2) Offline-Resolution via Cache/DB
+            if (identityCache == null) {
+                src.sendMessage(prefix().append(Component.text(
+                        "§cOffline-Lookup nicht verfügbar (identityCache ist null)."
+                )));
+                return;
+            }
+
+            Optional<UUID> resolved = identityCache.findUuidByName(targetName);
+            if (resolved.isEmpty()) {
+                src.sendMessage(prefix().append(Component.text(
+                        "§7Der Spieler §e" + targetName + " §7war entweder noch nie online oder ist nicht in der Datenbank."
+                )));
+                return;
+            }
+
+            uuid = resolved.get();
+            displayName = identityCache.findNameByUuid(uuid).orElse(targetName);
         }
 
-        Player player = opt.get();
-        SessionInfo info = sessions.getSession(player.getUniqueId());
+        SessionInfo info = sessions.getSession(uuid);
 
         src.sendMessage(Component.text(" "));
-        src.sendMessage(prefix().append(Component.text("§b/seen §7Informationen für §f" + player.getUsername())));
-
+        src.sendMessage(prefix().append(Component.text("§b/seen §7Informationen für §f" + displayName)));
         if (info == null) {
             src.sendMessage(Component.text("§7Keine Session-Daten gefunden."));
             src.sendMessage(Component.text(" "));
             return;
         }
 
-        src.sendMessage(Component.text("§8» §7Erster Login: §f" +
-                (info.firstLogin() != null ? fmt.format(info.firstLogin()) : "unbekannt")));
-        src.sendMessage(Component.text("§8» §7Letzter Login: §f" +
-                (info.lastLogin() != null ? fmt.format(info.lastLogin()) : "unbekannt")));
-        src.sendMessage(Component.text("§8» §7Letzter Logout: §f" +
-                (info.lastLogout() != null ? fmt.format(info.lastLogout()) : "aktuell online?")));
-        src.sendMessage(Component.text("§8» §7Gesamtspielzeit: §f" +
-                SessionService.formatDuration(info.totalPlaySeconds())));
-        src.sendMessage(Component.text("§8» §7Letzter Server: §f" +
-                (info.lastServer() != null ? info.lastServer() : "unbekannt")));
+        src.sendMessage(Component.text("§8» §7UUID: §f" + info.uuid()));
+        src.sendMessage(Component.text("§8» §7Erster Login: §f" + (info.firstLogin() != null ? fmt.format(info.firstLogin()) : "unbekannt")));
+        src.sendMessage(Component.text("§8» §7Letzter Login: §f" + (info.lastLogin() != null ? fmt.format(info.lastLogin()) : "unbekannt")));
+        src.sendMessage(Component.text("§8» §7Letzter Logout: §f" + (info.lastLogout() != null ? fmt.format(info.lastLogout()) : "unbekannt")));
+        src.sendMessage(Component.text("§8» §7Gesamtspielzeit: §f" + SessionService.formatDuration(info.totalPlaySeconds())));
+        src.sendMessage(Component.text("§8» §7Letzter Server: §f" + (info.lastServer() != null ? info.lastServer() : "unbekannt")));
         src.sendMessage(Component.text(" "));
     }
 
@@ -91,9 +114,7 @@ public class SeenCommand implements SimpleCommand {
     public boolean hasPermission(Invocation invocation) {
         CommandSource src = invocation.source();
         if (src instanceof Player p) {
-            return perms != null
-                    ? perms.hasPluginPermission(p, PERM_SEEN)
-                    : p.hasPermission(PERM_SEEN);
+            return perms != null ? perms.hasPluginPermission(p, PERM_SEEN) : p.hasPermission(PERM_SEEN);
         }
         return true;
     }
@@ -102,9 +123,8 @@ public class SeenCommand implements SimpleCommand {
     public List<String> suggest(Invocation invocation) {
         String[] args = invocation.arguments();
 
-        // /seen <Spieler>
+        // /seen <tab> => online Spieler (wie vorher)
         if (args.length == 0) {
-            // alle Spieler vorschlagen
             return proxy.getAllPlayers().stream()
                     .map(Player::getUsername)
                     .sorted(String.CASE_INSENSITIVE_ORDER)
@@ -122,5 +142,4 @@ public class SeenCommand implements SimpleCommand {
 
         return List.of();
     }
-
 }

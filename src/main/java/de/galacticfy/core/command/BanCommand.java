@@ -8,6 +8,7 @@ import de.galacticfy.core.permission.GalacticfyPermissionService;
 import de.galacticfy.core.punish.PunishDesign;
 import de.galacticfy.core.punish.ReasonPresets;
 import de.galacticfy.core.punish.ReasonPresets.Preset;
+import de.galacticfy.core.service.PlayerIdentityCacheService;
 import de.galacticfy.core.service.PunishmentService;
 import de.galacticfy.core.service.PunishmentService.Punishment;
 import de.galacticfy.core.util.DiscordWebhookNotifier;
@@ -27,14 +28,19 @@ public class BanCommand implements SimpleCommand {
     private final PunishmentService punishmentService;
     private final DiscordWebhookNotifier webhook;
 
+    // NEU: Name<->UUID Cache/DB Lookup
+    private final PlayerIdentityCacheService identityCache;
+
     public BanCommand(ProxyServer proxy,
                       GalacticfyPermissionService perms,
                       PunishmentService punishmentService,
-                      DiscordWebhookNotifier webhook) {
+                      DiscordWebhookNotifier webhook,
+                      PlayerIdentityCacheService identityCache) {
         this.proxy = proxy;
         this.perms = perms;
         this.punishmentService = punishmentService;
         this.webhook = webhook;
+        this.identityCache = identityCache;
     }
 
     private Component prefix() {
@@ -60,7 +66,6 @@ public class BanCommand implements SimpleCommand {
 
     @Override
     public void execute(Invocation invocation) {
-
         CommandSource src = invocation.source();
         String[] args = invocation.arguments();
 
@@ -70,9 +75,7 @@ public class BanCommand implements SimpleCommand {
         }
 
         if (args.length < 2) {
-            src.sendMessage(prefix().append(Component.text(
-                    "§eBenutzung: §b/ban <Spieler> <Dauer|Preset|perm> [Grund...]"
-            )));
+            src.sendMessage(prefix().append(Component.text("§eBenutzung: §b/ban <Spieler> <Dauer|Preset> [Grund...]")));
             return;
         }
 
@@ -81,21 +84,21 @@ public class BanCommand implements SimpleCommand {
 
         Player target = proxy.getPlayer(targetName).orElse(null);
 
-        // Selbst-Ban verhindern
-        if (src instanceof Player staff && target != null) {
-            if (staff.getUniqueId().equals(target.getUniqueId())) {
-                staff.sendMessage(prefix().append(Component.text(
-                        "§cDu kannst dich nicht selbst bannen."
-                )));
+        // Selbst-Ban verhindern (auch wenn offline-name)
+        if (src instanceof Player staff) {
+            if (target != null && staff.getUniqueId().equals(target.getUniqueId())) {
+                staff.sendMessage(prefix().append(Component.text("§cDu kannst dich nicht selbst bannen.")));
+                return;
+            }
+            if (target == null && staff.getUsername().equalsIgnoreCase(targetName)) {
+                staff.sendMessage(prefix().append(Component.text("§cDu kannst dich nicht selbst bannen.")));
                 return;
             }
         }
 
-        // Ban-Schutz
+        // Ban-Schutz (nur online prüfbar)
         if (target != null && isProtected(target)) {
-            src.sendMessage(prefix().append(Component.text(
-                    "§cDu kannst diesen Spieler nicht bannen (Team-Schutz aktiv)."
-            )));
+            src.sendMessage(prefix().append(Component.text("§cDu kannst diesen Spieler nicht bannen (Team-Schutz aktiv).")));
             return;
         }
 
@@ -114,7 +117,6 @@ public class BanCommand implements SimpleCommand {
             } else {
                 reason = preset.display();
             }
-
         } else {
             if (durationOrPreset.equals("perm") || durationOrPreset.equals("permanent")) {
                 durationMs = null;
@@ -147,6 +149,17 @@ public class BanCommand implements SimpleCommand {
             if (remoteObj instanceof InetSocketAddress isa && isa.getAddress() != null) {
                 ip = isa.getAddress().getHostAddress();
             }
+        } else {
+            // NEU: Offline -> UUID+Name via Cache/DB (gf_sessions)
+            if (identityCache != null) {
+                uuid = identityCache.findUuidByName(targetName).orElse(null);
+                if (uuid != null) {
+                    storedName = identityCache.findNameByUuid(uuid).orElse(storedName);
+                }
+            }
+
+            // Offline-IP optional (wie /check)
+            ip = punishmentService.getLastKnownIp(uuid, storedName);
         }
 
         String staffName = (src instanceof Player p) ? p.getUsername() : "Konsole";
@@ -157,27 +170,23 @@ public class BanCommand implements SimpleCommand {
             return;
         }
 
-        String durText = (p.expiresAt == null)
-                ? "§cPermanent"
-                : "§e" + punishmentService.formatRemaining(p);
+        String durText = (p.expiresAt == null) ? "§cPermanent" : "§e" + punishmentService.formatRemaining(p);
 
         src.sendMessage(Component.text(" "));
         src.sendMessage(Component.text(PunishDesign.BIG_HEADER_BAN));
         src.sendMessage(Component.text(" "));
         src.sendMessage(Component.text("§7Spieler: §f" + storedName));
-        src.sendMessage(Component.text("§7Grund:  §f" + reason));
-        src.sendMessage(Component.text("§7Dauer:  " + durText));
+        src.sendMessage(Component.text("§7Grund: §f" + reason));
+        src.sendMessage(Component.text("§7Dauer: " + durText));
         if (presetKeyUsed != null) {
             src.sendMessage(Component.text("§7Preset: §b" + presetKeyUsed));
         }
-        src.sendMessage(Component.text("§7Von:    §f" + staffName));
+        src.sendMessage(Component.text("§7Von: §f" + staffName));
         src.sendMessage(Component.text(PunishDesign.LINE));
         src.sendMessage(Component.text(" "));
 
         if (target != null) {
-            String remaining = (p.expiresAt == null)
-                    ? "§cPermanent"
-                    : "§e" + punishmentService.formatRemaining(p);
+            String remaining = (p.expiresAt == null) ? "§cPermanent" : "§e" + punishmentService.formatRemaining(p);
 
             Component kickMsg = Component.text(
                     "§c§lGalacticfy §8» §cDu wurdest gebannt.\n" +
@@ -196,8 +205,6 @@ public class BanCommand implements SimpleCommand {
         }
     }
 
-    // ===== Sichtbarkeit / Tab wie bei /maintenance =====
-
     @Override
     public boolean hasPermission(Invocation invocation) {
         return hasBanPermission(invocation.source());
@@ -211,28 +218,44 @@ public class BanCommand implements SimpleCommand {
 
         String[] args = invocation.arguments();
 
-        // /ban <Spieler>
+        // /ban <name>
         if (args.length == 1 || args.length == 0) {
             String prefix = args.length == 0 ? "" : args[0].toLowerCase(Locale.ROOT);
-            return proxy.getAllPlayers().stream()
+
+            // Online-Spieler wie gehabt
+            List<String> online = proxy.getAllPlayers().stream()
                     .map(Player::getUsername)
                     .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(prefix))
-                    .sorted()
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
                     .collect(Collectors.toList());
+
+            // Optional: bekannte Namen aus PunishmentService (falls du das schon für /check nutzt)
+            // Falls es die Methode nicht gibt, einfach löschen.
+            try {
+                List<String> known = punishmentService.findKnownNames(prefix, 20);
+                LinkedHashSet<String> merged = new LinkedHashSet<>();
+                merged.addAll(online);
+                merged.addAll(known);
+                return new ArrayList<>(merged);
+            } catch (Throwable ignored) {
+                return online;
+            }
         }
 
-        // /ban <Spieler> <Dauer|Preset>
+        // /ban <name> <dauer|preset>
         if (args.length == 2) {
             String prefix = args[1].toLowerCase(Locale.ROOT);
 
             List<String> base = Arrays.asList(
                     "10m", "30m", "1h", "6h", "1d", "7d", "30d", "1mo", "1y", "perm"
             );
+
             List<String> presets = ReasonPresets.tabComplete(prefix);
 
             List<String> out = new ArrayList<>();
             base.stream().filter(s -> s.startsWith(prefix)).forEach(out::add);
             out.addAll(presets);
+
             return out;
         }
 

@@ -6,53 +6,55 @@ import com.velocitypowered.api.proxy.Player;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
 import de.galacticfy.core.service.ReportService;
 import net.kyori.adventure.text.Component;
-import org.slf4j.Logger;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
+
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ReportJoinListener {
 
-    private static final String PERM_REPORT_VIEW = "galacticfy.report.view";
+    private static final String PERM_REPORT_VIEW = "galacticfy.report.staff";
 
     private final ReportService reportService;
     private final GalacticfyPermissionService perms;
-    private final Logger logger;
+
+    private final Set<UUID> notified = ConcurrentHashMap.newKeySet();
 
     public ReportJoinListener(ReportService reportService,
-                              GalacticfyPermissionService perms,
-                              Logger logger) {
+                              GalacticfyPermissionService perms) {
         this.reportService = reportService;
         this.perms = perms;
-        this.logger = logger;
     }
 
     private Component prefix() {
-        return Component.text("§8[§bGalacticfy§8] §r");
+        return Component.text("§8[§dReports§8] §r");
+    }
+
+    private boolean canView(Player player) {
+        if (perms != null) return perms.hasPluginPermission(player, PERM_REPORT_VIEW);
+        return player.hasPermission(PERM_REPORT_VIEW);
     }
 
     @Subscribe
     public void onPostLogin(PostLoginEvent event) {
         Player player = event.getPlayer();
 
-        boolean canView;
-        if (perms != null) {
-            canView = perms.hasPluginPermission(player, PERM_REPORT_VIEW);
-        } else {
-            canView = player.hasPermission(PERM_REPORT_VIEW);
-        }
-
-        if (!canView) {
-            return; // kein Team, keine Info
-        }
+        if (!canView(player)) return;
+        if (!notified.add(player.getUniqueId())) return;
 
         int open = reportService.countOpenReports();
+        if (open <= 0) return;
 
-        if (open <= 0) {
-            // wenn du auch bei 0 eine Info willst, hier stattdessen Nachricht schicken
-            return;
-        }
+        Component msg = prefix().append(Component.text(
+                "§7Es gibt aktuell §e" + open + " §7offene Reports. "
+        ));
 
-        player.sendMessage(prefix().append(Component.text(
-                "§7Es gibt aktuell §e" + open + " §7offene Reports."
-        )));
+        Component button = Component.text("§8[§dÖffnen§8]")
+                .clickEvent(ClickEvent.runCommand("/reports openall"))
+                .hoverEvent(HoverEvent.showText(Component.text("§7Klicke um alle offenen Reports zu sehen")));
+
+        player.sendMessage(msg.append(button));
     }
 }
-

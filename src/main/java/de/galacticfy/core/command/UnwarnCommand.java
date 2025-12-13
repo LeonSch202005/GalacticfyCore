@@ -5,11 +5,11 @@ import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
-import de.galacticfy.core.punish.PunishDesign;
+import de.galacticfy.core.service.PlayerIdentityCacheService;
 import de.galacticfy.core.service.PunishmentService;
-import de.galacticfy.core.service.PunishmentService.Punishment;
 import net.kyori.adventure.text.Component;
 
+import java.lang.reflect.Method;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -18,15 +18,18 @@ public class UnwarnCommand implements SimpleCommand {
     private static final String PERM_UNWARN = "galacticfy.punish.unwarn";
 
     private final ProxyServer proxy;
-    private final GalacticfyPermissionService perms;
     private final PunishmentService punishmentService;
+    private final GalacticfyPermissionService perms;
+    private final PlayerIdentityCacheService identityCache;
 
     public UnwarnCommand(ProxyServer proxy,
+                         PunishmentService punishmentService,
                          GalacticfyPermissionService perms,
-                         PunishmentService punishmentService) {
+                         PlayerIdentityCacheService identityCache) {
         this.proxy = proxy;
-        this.perms = perms;
         this.punishmentService = punishmentService;
+        this.perms = perms;
+        this.identityCache = identityCache;
     }
 
     private Component prefix() {
@@ -35,9 +38,7 @@ public class UnwarnCommand implements SimpleCommand {
 
     private boolean hasUnwarnPermission(CommandSource src) {
         if (src instanceof Player p) {
-            if (perms != null) {
-                return perms.hasPluginPermission(p, PERM_UNWARN);
-            }
+            if (perms != null) return perms.hasPluginPermission(p, PERM_UNWARN);
             return p.hasPermission(PERM_UNWARN);
         }
         return true;
@@ -45,7 +46,6 @@ public class UnwarnCommand implements SimpleCommand {
 
     @Override
     public void execute(Invocation invocation) {
-
         CommandSource src = invocation.source();
         String[] args = invocation.arguments();
 
@@ -54,67 +54,152 @@ public class UnwarnCommand implements SimpleCommand {
             return;
         }
 
-        if (args.length < 1) {
-            src.sendMessage(prefix().append(Component.text(
-                    "§eBenutzung: §b/unwarn <Spieler> [all]"
-            )));
+        if (args.length < 2) {
+            src.sendMessage(prefix().append(Component.text("§eBenutzung: §b/unwarn <spieler> <id|letzte>")));
             return;
         }
 
         String targetName = args[0];
-        boolean removeAll = args.length >= 2 && args[1].equalsIgnoreCase("all");
+        String idArg = args[1];
 
-        UUID uuid = proxy.getPlayer(targetName)
-                .map(Player::getUniqueId)
-                .orElse(null);
+        UUID uuid = null;
+        String storedName = targetName;
+
+        // UUID resolve
+        proxy.getPlayer(targetName).ifPresent(p -> {
+            // noop: wir lesen unten
+        });
+
+        Player online = proxy.getPlayer(targetName).orElse(null);
+        if (online != null) {
+            uuid = online.getUniqueId();
+            storedName = online.getUsername();
+        } else {
+            if (identityCache != null) {
+                uuid = identityCache.findUuidByName(targetName).orElse(null);
+                if (uuid != null) storedName = identityCache.findNameByUuid(uuid).orElse(storedName);
+            }
+        }
 
         String staffName = (src instanceof Player p) ? p.getUsername() : "Konsole";
 
-        if (removeAll) {
-            // Du brauchst in PunishmentService:
-            // int clearAllWarns(UUID uuid, String name, String staffName)
-            int removed = punishmentService.clearAllWarns(uuid, targetName, staffName);
-
-            if (removed <= 0) {
-                src.sendMessage(prefix().append(Component.text(
-                        "§7Es wurden keine Warns für §e" + targetName + " §7gefunden."
-                )));
+        boolean ok;
+        if (idArg.equalsIgnoreCase("letzte") || idArg.equalsIgnoreCase("last")) {
+            ok = invokeUnwarnLast(punishmentService, uuid, storedName, staffName);
+        } else {
+            long id;
+            try {
+                id = Long.parseLong(idArg);
+            } catch (NumberFormatException ex) {
+                src.sendMessage(prefix().append(Component.text("§cUngültige ID. Nutze eine Zahl oder 'letzte'.")));
                 return;
             }
-
-            src.sendMessage(Component.text(" "));
-            src.sendMessage(Component.text(PunishDesign.BIG_HEADER_UNWARN));
-            src.sendMessage(Component.text(" "));
-            src.sendMessage(Component.text("§7Spieler: §f" + targetName));
-            src.sendMessage(Component.text("§7Entfernt: §e" + removed + " Warn(s)"));
-            src.sendMessage(Component.text("§7Von:     §f" + staffName));
-            src.sendMessage(Component.text(PunishDesign.LINE));
-            src.sendMessage(Component.text(" "));
-            return;
+            ok = invokeUnwarnById(punishmentService, uuid, storedName, id, staffName);
         }
 
-        // Nur den letzten Warn entfernen:
-        // Punishment clearLastWarn(UUID uuid, String name, String staffName)
-        Punishment removed = punishmentService.clearLastWarn(uuid, targetName, staffName);
+        if (ok) {
+            src.sendMessage(prefix().append(Component.text("§aWarn wurde entfernt für §f" + storedName + "§a.")));
+        } else {
+            src.sendMessage(prefix().append(Component.text("§cKonnte Warn nicht entfernen (nicht gefunden oder DB-Fehler).")));
+        }
+    }
 
-        if (removed == null) {
-            src.sendMessage(prefix().append(Component.text(
-                    "§7Es gibt keinen Warn, der entfernt werden kann."
-            )));
-            return;
+    private boolean invokeUnwarnById(PunishmentService svc, UUID uuid, String name, long id, String staff) {
+        // Varianten:
+        // unwarn(uuid, name, id, staff)
+        // unwarnById(uuid, id, staff)
+        // removeWarn(uuid, id, staff)
+        // unwarn(name, id, staff) etc.
+        Boolean r;
+
+        if (uuid != null) {
+            r = tryCallBoolean(svc, "unwarn",
+                    new Class[]{UUID.class, String.class, long.class, String.class},
+                    new Object[]{uuid, name, id, staff});
+            if (r != null) return r;
+
+            r = tryCallBoolean(svc, "unwarnById",
+                    new Class[]{UUID.class, long.class, String.class},
+                    new Object[]{uuid, id, staff});
+            if (r != null) return r;
+
+            r = tryCallBoolean(svc, "removeWarn",
+                    new Class[]{UUID.class, long.class, String.class},
+                    new Object[]{uuid, id, staff});
+            if (r != null) return r;
         }
 
-        int remaining = punishmentService.countWarns(uuid, targetName);
+        r = tryCallBoolean(svc, "unwarn",
+                new Class[]{String.class, long.class, String.class},
+                new Object[]{name, id, staff});
+        if (r != null) return r;
 
-        src.sendMessage(Component.text(" "));
-        src.sendMessage(Component.text(PunishDesign.BIG_HEADER_UNWARN));
-        src.sendMessage(Component.text(" "));
-        src.sendMessage(Component.text("§7Spieler:   §f" + targetName));
-        src.sendMessage(Component.text("§7Entfernt:  §f" + removed.reason));
-        src.sendMessage(Component.text("§7Warns jetzt: §e" + remaining));
-        src.sendMessage(Component.text("§7Von:       §f" + staffName));
-        src.sendMessage(Component.text(PunishDesign.LINE));
-        src.sendMessage(Component.text(" "));
+        r = tryCallBoolean(svc, "unwarnById",
+                new Class[]{String.class, long.class, String.class},
+                new Object[]{name, id, staff});
+        if (r != null) return r;
+
+        r = tryCallBoolean(svc, "removeWarn",
+                new Class[]{String.class, long.class, String.class},
+                new Object[]{name, id, staff});
+        if (r != null) return r;
+
+        return false;
+    }
+
+    private boolean invokeUnwarnLast(PunishmentService svc, UUID uuid, String name, String staff) {
+        // Varianten:
+        // unwarnLast(uuid, name, staff)
+        // removeLastWarn(uuid, staff)
+        // unwarnLast(name, staff)
+        Boolean r;
+
+        if (uuid != null) {
+            r = tryCallBoolean(svc, "unwarnLast",
+                    new Class[]{UUID.class, String.class, String.class},
+                    new Object[]{uuid, name, staff});
+            if (r != null) return r;
+
+            r = tryCallBoolean(svc, "removeLastWarn",
+                    new Class[]{UUID.class, String.class},
+                    new Object[]{uuid, staff});
+            if (r != null) return r;
+        }
+
+        r = tryCallBoolean(svc, "unwarnLast",
+                new Class[]{String.class, String.class},
+                new Object[]{name, staff});
+        if (r != null) return r;
+
+        r = tryCallBoolean(svc, "removeLastWarn",
+                new Class[]{String.class, String.class},
+                new Object[]{name, staff});
+        if (r != null) return r;
+
+        return false;
+    }
+
+    private Boolean tryCallBoolean(Object target, String method, Class[] sig, Object[] args) {
+        try {
+            Method m = target.getClass().getMethod(method, sig);
+            Object out = m.invoke(target, args);
+
+            if (out == null) return false;
+            if (out instanceof Boolean b) return b;
+            if (out instanceof Integer i) return i > 0;
+            if (out instanceof Long l) return l > 0L;
+
+            if (out instanceof String s) {
+                String x = s.toLowerCase(Locale.ROOT);
+                return x.contains("ok") || x.contains("success") || x.contains("true");
+            }
+            return true;
+
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     @Override
@@ -124,38 +209,38 @@ public class UnwarnCommand implements SimpleCommand {
 
     @Override
     public List<String> suggest(Invocation invocation) {
-        if (!hasUnwarnPermission(invocation.source())) {
-            return List.of();
-        }
+        if (!hasUnwarnPermission(invocation.source())) return List.of();
 
         String[] args = invocation.arguments();
 
-        if (args.length == 0) {
-            Set<String> names = new LinkedHashSet<>();
-            names.addAll(punishmentService.getAllPunishedNames());
-            proxy.getAllPlayers().forEach(p -> names.add(p.getUsername()));
-            return names.stream().sorted(String.CASE_INSENSITIVE_ORDER).collect(Collectors.toList());
-        }
+        // /unwarn <name>
+        if (args.length == 0) return suggestNames("");
+        if (args.length == 1) return suggestNames(args[0]);
 
-        if (args.length == 1) {
-            String prefix = args[0].toLowerCase(Locale.ROOT);
-            Set<String> names = new LinkedHashSet<>();
-            names.addAll(punishmentService.getAllPunishedNames());
-            proxy.getAllPlayers().forEach(p -> names.add(p.getUsername()));
-
-            return names.stream()
-                    .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(prefix))
-                    .sorted(String.CASE_INSENSITIVE_ORDER)
-                    .collect(Collectors.toList());
-        }
-
+        // /unwarn <name> <id|letzte>
         if (args.length == 2) {
-            String prefix = args[1].toLowerCase(Locale.ROOT);
-            return List.of("all").stream()
-                    .filter(s -> s.startsWith(prefix))
-                    .collect(Collectors.toList());
+            String p = (args[1] == null ? "" : args[1]).toLowerCase(Locale.ROOT);
+            List<String> base = List.of("letzte");
+            if (p.isEmpty()) return base;
+            return base.stream().filter(x -> x.startsWith(p)).collect(Collectors.toList());
         }
 
         return List.of();
+    }
+
+    private List<String> suggestNames(String prefixRaw) {
+        String prefix = (prefixRaw == null ? "" : prefixRaw).toLowerCase(Locale.ROOT);
+
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        proxy.getAllPlayers().forEach(p -> {
+            String n = p.getUsername();
+            if (n != null && n.toLowerCase(Locale.ROOT).startsWith(prefix)) out.add(n);
+        });
+
+        try {
+            out.addAll(punishmentService.findKnownNames(prefix, 25));
+        } catch (Throwable ignored) {}
+
+        return out.stream().sorted(String.CASE_INSENSITIVE_ORDER).limit(40).collect(Collectors.toList());
     }
 }

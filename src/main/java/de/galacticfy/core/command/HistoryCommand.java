@@ -5,6 +5,7 @@ import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import de.galacticfy.core.permission.GalacticfyPermissionService;
+import de.galacticfy.core.service.PlayerIdentityCacheService;
 import de.galacticfy.core.service.PunishmentService;
 import de.galacticfy.core.service.PunishmentService.Punishment;
 import de.galacticfy.core.service.PunishmentService.PunishmentType;
@@ -21,18 +22,19 @@ public class HistoryCommand implements SimpleCommand {
     private final ProxyServer proxy;
     private final PunishmentService punishmentService;
     private final GalacticfyPermissionService perms;
+    private final PlayerIdentityCacheService identityCache;
 
     private static final String PERM_HISTORY = "galacticfy.punish.history";
-
-    private static final DateTimeFormatter DATE_FORMAT =
-            DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
 
     public HistoryCommand(ProxyServer proxy,
                           PunishmentService punishmentService,
-                          GalacticfyPermissionService perms) {
+                          GalacticfyPermissionService perms,
+                          PlayerIdentityCacheService identityCache) {
         this.proxy = proxy;
         this.punishmentService = punishmentService;
         this.perms = perms;
+        this.identityCache = identityCache;
     }
 
     private Component prefix() {
@@ -51,7 +53,6 @@ public class HistoryCommand implements SimpleCommand {
 
     @Override
     public void execute(Invocation invocation) {
-
         CommandSource src = invocation.source();
         String[] args = invocation.arguments();
 
@@ -61,15 +62,13 @@ public class HistoryCommand implements SimpleCommand {
         }
 
         if (args.length < 1) {
-            src.sendMessage(prefix().append(Component.text(
-                    "§eBenutzung: §b/history <Spieler> [Seite]"
-            )));
+            src.sendMessage(prefix().append(Component.text("§eBenutzung: §b/history <spieler> [Seite]")));
             return;
         }
 
         String targetName = args[0];
-        int page = 1;
 
+        int page = 1;
         if (args.length >= 2) {
             try {
                 page = Integer.parseInt(args[1]);
@@ -79,37 +78,48 @@ public class HistoryCommand implements SimpleCommand {
             }
         }
 
-        UUID uuid = proxy.getPlayer(targetName)
-                .map(Player::getUniqueId)
-                .orElse(null);
+        Player online = proxy.getPlayer(targetName).orElse(null);
 
-        List<Punishment> list = punishmentService.getHistory(uuid, targetName, 200);
+        UUID uuid = null;
+        String storedName = targetName;
 
-        list = list.stream()
+        if (online != null) {
+            uuid = online.getUniqueId();
+            storedName = online.getUsername();
+        } else {
+            // NEU: Offline -> UUID via Cache/DB
+            if (identityCache != null) {
+                uuid = identityCache.findUuidByName(targetName).orElse(null);
+                if (uuid != null) {
+                    storedName = identityCache.findNameByUuid(uuid).orElse(storedName);
+                }
+            }
+        }
+
+        List list = punishmentService.getHistory(uuid, storedName, 200);
+        list = (List<Punishment>) list.stream()
                 .sorted(Comparator.comparing((Punishment p) -> p.createdAt).reversed())
                 .collect(Collectors.toList());
 
         int perPage = 8;
         int totalPages = Math.max(1, (int) Math.ceil(list.size() / (double) perPage));
-
         if (page > totalPages) page = totalPages;
 
         int start = (page - 1) * perPage;
         int end = Math.min(start + perPage, list.size());
 
-        List<Punishment> pageList = list.subList(start, end);
+        List pageList = list.subList(start, end);
 
         src.sendMessage(Component.text(" "));
         src.sendMessage(prefix().append(Component.text(
-                "§bHistory für §f" + targetName + " §7(Seite " + page + "§7/§3" + totalPages + "§7)"
+                "§bHistory für §f" + storedName + " §7(Seite " + page + "§7/§3" + totalPages + "§7)"
         )));
         src.sendMessage(Component.text("§8§m────────────────────────────────"));
 
         if (pageList.isEmpty()) {
             src.sendMessage(Component.text("§7Keine Einträge gefunden."));
         } else {
-            for (Punishment p : pageList) {
-
+            for (Punishment p : (List<Punishment>) pageList) {
                 String icon;
                 String color;
 
@@ -144,16 +154,14 @@ public class HistoryCommand implements SimpleCommand {
                                 " §8| §7von §f" + p.staff +
                                 " §8| §7am §f" + date +
                                 " §8| §7Dauer: §f" + duration +
-                                " §8| " + active +
-                                "\n    §7Grund: §f" + p.reason
+                                " §8| " + active + "\n" +
+                                " §7Grund: §f" + p.reason
                 ));
             }
         }
 
         src.sendMessage(Component.text("§8§m────────────────────────────────"));
-        src.sendMessage(Component.text(
-                "§7Seiten: §f/history " + targetName + " <1-" + totalPages + ">"
-        ));
+        src.sendMessage(Component.text("§7Seiten: §f/history " + storedName + " <1-" + totalPages + ">"));
         src.sendMessage(Component.text(" "));
     }
 
@@ -163,7 +171,7 @@ public class HistoryCommand implements SimpleCommand {
     }
 
     @Override
-    public List<String> suggest(Invocation invocation) {
+    public List suggest(Invocation invocation) {
         CommandSource src = invocation.source();
         String[] args = invocation.arguments();
 
@@ -178,8 +186,7 @@ public class HistoryCommand implements SimpleCommand {
         if (args.length == 1) {
             String prefix = args[0].toLowerCase(Locale.ROOT);
             return punishmentService.getAllPunishedNames().stream()
-                    .filter(n -> prefix.isEmpty()
-                            || n.toLowerCase(Locale.ROOT).startsWith(prefix))
+                    .filter(n -> prefix.isEmpty() || n.toLowerCase(Locale.ROOT).startsWith(prefix))
                     .sorted(String.CASE_INSENSITIVE_ORDER)
                     .collect(Collectors.toList());
         }
