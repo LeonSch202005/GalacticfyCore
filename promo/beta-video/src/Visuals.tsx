@@ -20,7 +20,8 @@ import {
 import {PixelIcon} from './PixelIcon';
 import {Highlight, Screen} from './Screen';
 
-type VProps = {duration: number};
+/** stage = Visual-Bereich im Bild (px): top/height (aus GalacticfyBeta.tsx) */
+type VProps = {duration: number; stage?: {top: number; height: number}};
 
 const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 
@@ -760,72 +761,277 @@ export const SlotsVisual: React.FC<VProps> = () => {
   );
 };
 
-/* ---------- 6: Discord – echtes Banner "DISCORD /dc | TEAMSPEAK /ts" ---------- */
-export const DiscordVisual: React.FC<VProps> = () => {
+/* ---------- 6: Discord – der echte Bewerbungsweg ----------
+ * Ingame-Banner "/dc" -> Kanal "# tickets" mit dem Embed-Abschnitt "Betatester werden" ->
+ * Cursor klickt "Jetzt bewerben" -> das echte Formular "Betatester" ploppt auf (Hintergrund
+ * abgedunkelt wie bei einem Discord-Popup, Caption bleibt darüber).
+ * Discord-Screenshots sind kein Pixel-Art: sie werden weich skaliert (SCREENS.discord*.smooth).
+ * Alle Positionen in Bild-Pixeln (1080×1920); stage.top = Oberkante des Visual-Bereichs. */
+const BLURPLE = '#5865F2';
+/** Embed-Farbleiste links (aus dem Screenshot) */
+const EMBED_BAR = '#9c59ff';
+/** Hintergründe aus den Screenshots: Embed (10,10,12), Kanal-Kopfzeile (0,0,0) */
+const DC_EMBED_BG = '#0a0a0c';
+const DC_HEADER_BG = '#000000';
+/** Formular-Feld-Hintergrund (für den blinkenden Text-Cursor) */
+const DC_FIELD_BG = 'rgb(9,9,11)';
+
+// Discord-"Fenster" (Kanal-Kopfzeile + Embed-Abschnitt), etwas links der Mitte,
+// damit alles sicher außerhalb der rechten TikTok-Leiste (x > 940) liegt.
+// Zwei Zeilen statt Original-Layout (Button rechts neben dem Text wäre am Handy zu klein):
+//   Zeile 1: Überschrift + Beschreibung (SCREEN_REGIONS.discordApplyText)
+//   Zeile 2: der echte Button "Jetzt bewerben", groß – wird geklickt
+const DC_PANEL_LEFT = 30;
+const DC_PANEL_BOTTOM = 1079; // Unterkante (Caption beginnt bei ~1110)
+const DC_BORDER = 4;
+const DC_CHANNEL_SCALE = 2;
+const DC_TEXT_SCALE = 2.08; // Zeile 1: 404 px -> 840 px breit
+const DC_BUTTON_SCALE = 2.6; // Zeile 2: 142×32 -> 369×83 px
+const DC_ROW_GAP = 16;
+const DC_HEADER_PAD = {x: 22, y: 14};
+const DC_BODY_PAD = {top: 22, right: 16, bottom: 24, left: 20};
+const DC_BAR_W = 6;
+const DC_BAR_GAP = 14;
+const DC_BANNER_SCALE = 1.45;
+const DC_CURSOR = 100; // Größe des Maus-Cursors (px)
+
+export const DiscordVisual: React.FC<VProps> = ({stage}) => {
   const frame = useCurrentFrame();
-  const {fps} = useVideoConfig();
-  const p = usePop(0, 10);
-  const btn = usePop(10, 12);
+  const {fps, width, height} = useVideoConfig();
+  const stageTop = stage?.top ?? 0;
+  const stageH = stage?.height ?? height;
+  /** Bild-y -> y im Visual-Bereich */
+  const Y = (abs: number) => abs - stageTop;
+
+  // ---- Layout (abgeleitet) ----
+  const ch = SCREENS.discordChannel;
+  const tx = SCREEN_REGIONS.discordApplyText;
+  const bt = SCREENS.discordApplyButton;
+  const headerH = ch.height * DC_CHANNEL_SCALE + DC_HEADER_PAD.y * 2;
+  const textW = tx.w * DC_TEXT_SCALE;
+  const textH = tx.h * DC_TEXT_SCALE;
+  const btnW = bt.width * DC_BUTTON_SCALE;
+  const btnH = bt.height * DC_BUTTON_SCALE;
+  // Button bündig mit dem Text darüber (Text beginnt im PNG bei x = 12)
+  const btnIndent = (12 - tx.x) * DC_TEXT_SCALE;
+  const bodyH = DC_BODY_PAD.top + textH + DC_ROW_GAP + btnH + DC_BODY_PAD.bottom;
+  const panelW = DC_BORDER * 2 + DC_BODY_PAD.left + DC_BAR_W + DC_BAR_GAP + textW + DC_BODY_PAD.right;
+  const panelH = DC_BORDER * 2 + headerH + 2 + bodyH;
+  const panelTop = DC_PANEL_BOTTOM - panelH;
+  const panelCenterX = DC_PANEL_LEFT + panelW / 2;
+  // Button "Jetzt bewerben" in Bild-Koordinaten
+  const contentLeft = DC_PANEL_LEFT + DC_BORDER + DC_BODY_PAD.left + DC_BAR_W + DC_BAR_GAP;
+  const contentTop = panelTop + DC_BORDER + headerH + 2 + DC_BODY_PAD.top;
+  const btnX = contentLeft + btnIndent;
+  const btnY = contentTop + textH + DC_ROW_GAP;
+  // Banner "/dc" über dem Fenster
+  const bn = SCREENS.discordBanner;
+  const bannerW = bn.width * DC_BANNER_SCALE;
+  const bannerH = bn.height * DC_BANNER_SCALE;
+  const bannerTop = panelTop - 34 - bannerH;
+  // Formular: mittig im Bild (wie Logo, Caption und End-Card)
+  const fm = SCREENS.discordForm;
+  const formW = fm.width * DISCORD.formScale;
+  const formLeft = width / 2 - formW / 2;
+
+  // ---- Timing ----
+  const bannerP = usePop(0, 11);
+  const panelP = spring({frame: frame - 4, fps, config: {damping: 14, stiffness: 150, mass: 0.8}});
   const hl = spring({frame: frame - sec(DISCORD.highlightAt), fps, config: {damping: 11}});
   const clickAt = sec(DISCORD.clickAt);
-  const pressed = frame >= clickAt && frame < clickAt + 6;
-  const clicked = frame >= clickAt;
-  // Cursor kommt auf Button-Höhe von rechts (nicht über die Caption) und klickt rechts
-  // neben die Beschriftung – Koordinaten relativ zur rechten Button-Kante.
-  const cursorX = interpolate(frame, [16, clickAt], [330, -32], {...clamp, easing: Easing.out(Easing.cubic)});
-  const cursorY = interpolate(frame, [16, clickAt], [18, 46], {...clamp, easing: Easing.inOut(Easing.quad)});
-  const blurple = '#5865F2';
-  const bannerScale = 1.65;
-  const glow = 1.2 + Math.sin(frame / 5) * 0.3;
+  const formAt = sec(DISCORD.formAt);
+  const press = interpolate(frame - clickAt, [0, 2, 7], [0, 1, 0], clamp);
+  const flash = interpolate(frame - clickAt, [0, 2, 14], [0, 1, 0], clamp);
+  const ripple = frame >= clickAt ? interpolate(frame - clickAt, [0, 16], [0, 1], clamp) : 0;
+  // Button lockt vor dem Klick mit einem pulsierenden Glow
+  const lure = interpolate(frame, [12, 22], [0, 1], clamp) * (frame < clickAt ? 0.6 + 0.4 * Math.sin(frame / 3) : 0);
+  const formP = spring({frame: frame - formAt, fps, config: {damping: 14, stiffness: 190, mass: 0.75}});
+  const dim = interpolate(frame - formAt, [0, 6], [0, 1], clamp);
+  const submit = spring({frame: frame - sec(DISCORD.submitHintAt), fps, config: {damping: 12}});
+  const caretOff = frame >= formAt && Math.floor((frame - formAt) / 14) % 2 === 1;
+  // Popup geht zu: Formular schrumpft + blendet aus, Abdunklung und Discord-Fenster blenden aus
+  // -> die letzten Frames vor dem End-Card-Blitz zeigen den Flug ins lila Portal.
+  const close = interpolate(frame - sec(DISCORD.closeAt), [0, 7], [0, 1], {...clamp, easing: Easing.in(Easing.quad)});
+  const open = 1 - close;
+
+  // Cursor (Spitze = linke obere Ecke des Icons) kommt von rechts durch die leere Button-Zeile
+  // (nicht über Text oder Caption), klickt unten rechts auf den Button (Beschriftung bleibt
+  // lesbar) und verschwindet mit dem Popup.
+  const tipX = btnX + btnW * 0.92;
+  const tipY = btnY + btnH * 0.72;
+  const cursorX = interpolate(frame, [8, clickAt], [width + 40, tipX], {...clamp, easing: Easing.out(Easing.cubic)});
+  const cursorY = interpolate(frame, [8, clickAt], [tipY - 24, tipY], {...clamp, easing: Easing.inOut(Easing.quad)});
+  const cursorScale = 1 - 0.12 * press;
+  const rippleR = 110;
+
+  const glow = 1.15 + Math.sin(frame / 5) * 0.3;
+
   return (
-    <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 44}}>
+    <div style={{position: 'relative', width, height: stageH, flexShrink: 0}}>
+      {/* Ingame-Banner "DISCORD /dc" */}
       <div
         style={{
-          position: 'relative',
-          transform: `scale(${0.5 + 0.5 * p}) translateY(${(1 - p) * 60}px)`,
-          opacity: Math.min(1, p * 1.5),
-          filter: neon(blurple, glow),
+          position: 'absolute',
+          left: panelCenterX - bannerW / 2,
+          top: Y(bannerTop),
+          transform: `scale(${0.5 + 0.5 * bannerP}) translateY(${(1 - bannerP) * 60}px)`,
+          opacity: Math.min(1, bannerP * 1.5) * open,
+          filter: neon(BLURPLE, glow),
         }}
       >
-        <Screen img={SCREENS.discordBanner} scale={bannerScale} outline={SCREEN_OUTLINES.discordBanner} />
+        <Screen img={bn} scale={DC_BANNER_SCALE} outline={SCREEN_OUTLINES.discordBanner} />
         <Highlight
           region={SCREEN_REGIONS.discordCommand}
-          scale={bannerScale}
+          scale={DC_BANNER_SCALE}
           color={COLORS.cyan}
           progress={hl}
           pulse={frame}
-          pad={10}
+          pad={9}
         />
       </div>
-      <div style={{position: 'relative'}}>
+
+      {/* Discord-"Fenster": Kanal "# tickets" + Embed-Abschnitt "Betatester werden" + Button */}
+      <div
+        style={{
+          position: 'absolute',
+          left: DC_PANEL_LEFT,
+          top: Y(panelTop),
+          width: panelW,
+          height: panelH,
+          transform: `translateY(${(1 - panelP) * 80}px) scale(${0.9 + 0.1 * panelP})`,
+          opacity: Math.min(1, panelP * 1.6) * open,
+        }}
+      >
         <div
           style={{
-            transform: `scale(${btn * (pressed ? 0.92 : 1)})`,
-            fontFamily: FONT_HEAVY,
-            fontWeight: 900,
-            fontSize: 56,
-            color: '#fff',
-            padding: '24px 44px',
-            background: clicked ? '#3dbb6a' : blurple,
-            border: '6px solid #fff',
-            boxShadow: `inset -9px -9px 0 rgba(0,0,0,0.3), 0 0 40px ${clicked ? '#3dff7a' : blurple}, 0 12px 30px rgba(0,0,0,0.5)`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 18,
-            whiteSpace: 'nowrap',
-            // feste Breite inkl. Haken -> der Button springt beim Klick nicht
+            width: panelW,
+            height: panelH,
             boxSizing: 'border-box',
-            minWidth: 560,
+            border: `${DC_BORDER}px solid ${BLURPLE}b3`,
+            borderRadius: 14,
+            overflow: 'hidden',
+            background: DC_EMBED_BG,
+            boxShadow: `0 0 26px ${BLURPLE}88, 0 0 60px ${COLORS.purple}44, 0 14px 40px rgba(0,0,0,0.55)`,
           }}
         >
-          {clicked ? <PixelIcon name="check" size={56} /> : null}
-          {DISCORD.button}
+          <div
+            style={{
+              height: headerH,
+              boxSizing: 'border-box',
+              padding: `${DC_HEADER_PAD.y}px ${DC_HEADER_PAD.x}px`,
+              background: DC_HEADER_BG,
+              borderBottom: '2px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <Screen img={ch} scale={DC_CHANNEL_SCALE} />
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'stretch',
+              gap: DC_BAR_GAP,
+              padding: `${DC_BODY_PAD.top}px ${DC_BODY_PAD.right}px ${DC_BODY_PAD.bottom}px ${DC_BODY_PAD.left}px`,
+            }}
+          >
+            <div style={{width: DC_BAR_W, borderRadius: 3, background: EMBED_BAR, flexShrink: 0}} />
+            <Screen img={SCREENS.discordApply} region={tx} scale={DC_TEXT_SCALE} />
+          </div>
         </div>
-        <div style={{position: 'absolute', left: '100%', top: 0, transform: `translate(${cursorX}px, ${cursorY}px)`}}>
-          <PixelIcon name="cursor" size={80} />
+        {/* Button "Jetzt bewerben" (echter Ausschnitt), groß als eigene Zeile: Glow, Klick, Blitz */}
+        <div
+          style={{
+            position: 'absolute',
+            left: btnX - DC_PANEL_LEFT,
+            top: btnY - panelTop,
+            transform: `scale(${1 - 0.08 * press})`,
+            filter: `brightness(${1 + 0.7 * flash}) drop-shadow(0 0 ${8 + 26 * lure + 36 * flash}px rgba(61,255,122,${0.3 + 0.5 * lure + 0.6 * flash}))`,
+          }}
+        >
+          <Screen img={bt} scale={DC_BUTTON_SCALE} />
         </div>
       </div>
+
+      {/* Klick-Welle */}
+      {ripple > 0 && ripple < 1 ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: tipX - rippleR * ripple,
+            top: Y(tipY) - rippleR * ripple,
+            width: 2 * rippleR * ripple,
+            height: 2 * rippleR * ripple,
+            borderRadius: '50%',
+            border: `7px solid rgba(255,255,255,${0.9 * (1 - ripple)})`,
+            boxShadow: `0 0 24px rgba(61,255,122,${0.9 * (1 - ripple)}), inset 0 0 18px rgba(61,255,122,${0.6 * (1 - ripple)})`,
+          }}
+        />
+      ) : null}
+      {/* Maus-Cursor */}
+      <div
+        style={{
+          position: 'absolute',
+          left: cursorX,
+          top: Y(cursorY),
+          transform: `scale(${cursorScale})`,
+          transformOrigin: '0 0',
+          opacity: 1 - dim,
+          filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.6))',
+        }}
+      >
+        <PixelIcon name="cursor" size={DC_CURSOR} />
+      </div>
+
+      {/* Popup: Abdunklung (ganzes Bild, auch Logo – nur die Caption bleibt darüber) */}
+      {dim * open > 0 ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: -400,
+            top: Y(0) - 400,
+            width: width + 800,
+            height: height + 800,
+            background: `rgba(0,0,0,${DISCORD.formDim * dim * open})`,
+          }}
+        />
+      ) : null}
+      {/* Echtes Formular "Betatester" */}
+      {frame >= formAt && open > 0 ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: formLeft,
+            top: Y(DISCORD.formTop),
+            transform: `translateY(${(1 - formP) * 40}px) scale(${(0.84 + 0.16 * formP) * (1 - 0.1 * close)})`,
+            transformOrigin: '50% 40%',
+            opacity: Math.min(1, formP * 2.2) * open,
+            filter: `drop-shadow(0 0 22px ${BLURPLE}99) drop-shadow(0 0 50px ${COLORS.purple}55) drop-shadow(0 18px 40px rgba(0,0,0,0.7))`,
+          }}
+        >
+          <Screen img={fm} scale={DISCORD.formScale}>
+            {/* blinkender Text-Cursor im Feld "Minecraft-Name" */}
+            {caretOff ? (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: SCREEN_REGIONS.discordFormCaret.x * DISCORD.formScale,
+                  top: SCREEN_REGIONS.discordFormCaret.y * DISCORD.formScale,
+                  width: SCREEN_REGIONS.discordFormCaret.w * DISCORD.formScale,
+                  height: SCREEN_REGIONS.discordFormCaret.h * DISCORD.formScale,
+                  background: DC_FIELD_BG,
+                }}
+              />
+            ) : null}
+          </Screen>
+          <Highlight
+            region={SCREEN_REGIONS.discordFormSubmit}
+            scale={DISCORD.formScale}
+            color={COLORS.cyan}
+            progress={submit}
+            pulse={frame}
+            pad={6}
+          />
+        </div>
+      ) : null}
     </div>
   );
 };

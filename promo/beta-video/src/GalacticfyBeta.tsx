@@ -14,12 +14,14 @@ import {CutFlash, FootageGrade, FootageShot} from './Footage';
 import {
   BRAND,
   COLORS,
+  DISCORD,
   END_CARD,
   END_CARD_CLIP,
   END_CARD_CLIP_BLUR,
   END_CARD_CLIP_DIM,
   END_CARD_FOOTER,
   END_CARD_LINKS,
+  END_CARD_STEPS,
   FONT_HEAVY,
   FONT_PIXEL,
   MAIN_SECONDS,
@@ -136,7 +138,7 @@ const SegmentScene: React.FC<{seg: Segment}> = ({seg}) => {
           transform: `scale(${1 - out * 0.12}) translateY(${-out * 40}px)`,
         }}
       >
-        <Visual duration={duration} />
+        <Visual duration={duration} stage={{top: VISUAL_TOP, height: VISUAL_HEIGHT}} />
       </div>
       <div
         style={{
@@ -161,11 +163,74 @@ const SegmentScene: React.FC<{seg: Segment}> = ({seg}) => {
   );
 };
 
+const endRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 24,
+  padding: '22px 24px',
+  background: 'rgba(10,5,30,0.74)',
+};
+const endRowText: React.CSSProperties = {
+  fontFamily: FONT_HEAVY,
+  fontWeight: 900,
+  fontSize: 46,
+  lineHeight: 1.15,
+  color: COLORS.white,
+  textShadow: '0 4px 0 rgba(0,0,0,0.6)',
+};
+
+/** Ein Schritt der Bewerbungs-Zeile: Text, Discord-Kanal ("#tickets") oder grüner Discord-Button. */
+const EndCardStep: React.FC<{text: string; look: 'text' | 'channel' | 'button'}> = ({text, look}) => {
+  if (look === 'text') return <StaticRich text={text} style={{...endRowText, whiteSpace: 'nowrap'}} />;
+  const chip: React.CSSProperties = {
+    fontFamily: FONT_HEAVY,
+    fontWeight: 900,
+    fontSize: 40,
+    lineHeight: 1.1,
+    padding: '7px 18px 9px',
+    borderRadius: 10,
+    whiteSpace: 'nowrap',
+    color: '#fff',
+  };
+  if (look === 'channel') {
+    const hash = text.startsWith('#');
+    return (
+      <div
+        style={{
+          ...chip,
+          background: '#111214',
+          border: '3px solid rgba(255,255,255,0.22)',
+          color: '#e6e7ea',
+          boxShadow: '0 6px 14px rgba(0,0,0,0.5)',
+        }}
+      >
+        {hash ? <span style={{color: '#8a8e96', marginRight: 4}}>#</span> : null}
+        {hash ? text.slice(1) : text}
+      </div>
+    );
+  }
+  // Farbe wie der echte "Jetzt bewerben"-Button (SCREENS.discordApplyButton)
+  return (
+    <div
+      style={{
+        ...chip,
+        background: '#006c37',
+        border: '3px solid #23a55a',
+        boxShadow: '0 0 20px rgba(61,255,122,0.45), 0 6px 14px rgba(0,0,0,0.5)',
+        textShadow: '0 2px 0 rgba(0,0,0,0.35)',
+      }}
+    >
+      {text}
+    </div>
+  );
+};
+
 const EndCard: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const logo = spring({frame, fps, config: {damping: 10}});
-  const linksIn = spring({frame: frame - 8 - END_CARD.length * 5, fps, config: {damping: 12}});
+  const stepsIn = spring({frame: frame - 6 - END_CARD.length * 5, fps, config: {damping: 13}});
+  const linksIn = spring({frame: frame - 8 - (END_CARD.length + 1) * 5, fps, config: {damping: 12}});
   return (
     <AbsoluteFill
       style={{
@@ -188,39 +253,45 @@ const EndCard: React.FC = () => {
       >
         {END_CARD.map((row, i) => {
           const p = spring({frame: frame - 6 - i * 5, fps, config: {damping: 13}});
-          const last = i === END_CARD.length - 1;
           return (
             <div
               key={i}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 24,
-                padding: '22px 24px',
-                background: 'rgba(10,5,30,0.74)',
-                border: `5px solid ${last ? COLORS.cyan : 'rgba(180,77,255,0.75)'}`,
-                boxShadow: last
-                  ? `0 0 ${30 + Math.sin(frame / 5) * 14}px ${COLORS.cyan}`
-                  : `0 0 22px rgba(180,77,255,0.4)`,
+                ...endRowStyle,
+                border: '5px solid rgba(180,77,255,0.75)',
+                boxShadow: '0 0 22px rgba(180,77,255,0.4)',
                 transform: `translateX(${(1 - p) * 900}px)`,
                 opacity: Math.min(1, p * 1.5),
               }}
             >
               <PixelIcon name={row.icon} size={70} glow={COLORS.purple} />
-              <StaticRich
-                text={row.text}
-                style={{
-                  fontFamily: FONT_HEAVY,
-                  fontWeight: 900,
-                  fontSize: 46,
-                  lineHeight: 1.15,
-                  color: COLORS.white,
-                  textShadow: '0 4px 0 rgba(0,0,0,0.6)',
-                }}
-              />
+              <StaticRich text={row.text} style={endRowText} />
             </div>
           );
         })}
+        {/* Hervorgehoben: der echte Weg zur Bewerbung (Discord /dc -> #tickets -> Jetzt bewerben) */}
+        <div
+          style={{
+            ...endRowStyle,
+            padding: '20px 24px',
+            border: `5px solid ${COLORS.cyan}`,
+            boxShadow: `0 0 ${30 + Math.sin(frame / 5) * 14}px ${COLORS.cyan}`,
+            transform: `translateX(${(1 - stepsIn) * 900}px)`,
+            opacity: Math.min(1, stepsIn * 1.5),
+          }}
+        >
+          <PixelIcon name="pointer" size={70} glow={COLORS.purple} />
+          <div style={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 14, rowGap: 14}}>
+            {END_CARD_STEPS.map((step, i) => (
+              <div key={i} style={{display: 'flex', alignItems: 'center', gap: 14}}>
+                {i > 0 ? (
+                  <PixelIcon name="arrowUp" size={34} glow={COLORS.cyan} style={{transform: 'rotate(90deg)'}} />
+                ) : null}
+                <EndCardStep text={step.text} look={step.look} />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
       {/* Website + Discord-Befehl */}
       <div
@@ -303,10 +374,14 @@ export const GalacticfyBeta: React.FC = () => {
   const frame = useCurrentFrame();
   const mainFrames = sec(MAIN_SECONDS);
   const endFrames = TOTAL_FRAMES - mainFrames;
-  const headerOpacity = interpolate(frame, [mainFrames - 8, mainFrames], [1, 0], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  });
+  // Header blendet vor der End-Card aus – und solange das Discord-Formular offen ist
+  // (das Popup liegt abgedunkelt über allem, nur die Caption bleibt darüber).
+  const discordSeg = SEGMENTS.find((s) => s.visual === 'discord');
+  const formFrame = discordSeg ? sec(discordSeg.from + DISCORD.formAt) : TOTAL_FRAMES;
+  const headerOpacity = Math.min(
+    interpolate(frame, [mainFrames - 8, mainFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
+    interpolate(frame, [formFrame, formFrame + 6], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
+  );
   // Sterne/Partikel: dezent über dem Gameplay, kräftiger auf der End-Card
   const particleOpacity = interpolate(frame, [mainFrames - 4, mainFrames + 6], [0.38, 0.9], {
     extrapolateLeft: 'clamp',

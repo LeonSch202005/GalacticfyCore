@@ -6,7 +6,8 @@ import {Region, SCREEN_DIR, ScreenImage} from './config';
  * Echter Screenshot-Ausschnitt aus public/screens/.
  *  - region: nur ein Teil des PNGs (Pixel), sonst das ganze Bild
  *  - scale oder width: Darstellungsgröße
- *  - pixelated: harte Minecraft-Pixel beim Hochskalieren (Standard: an, sobald scale > 1)
+ *  - pixelated: harte Minecraft-Pixel beim Hochskalieren (Standard: an, sobald scale > 1 –
+ *    außer bei img.smooth, z. B. Discord-Screenshots: die werden immer weich skaliert)
  *  - outline: Polygon in Screenshot-Pixeln (z. B. SCREEN_OUTLINES.discordBanner) – alles
  *    außerhalb wird weggeschnitten (Glow/drop-shadow am Eltern-Element folgt dem Umriss)
  */
@@ -22,7 +23,7 @@ export const Screen: React.FC<{
 }> = ({img, region, scale, width, pixelated, outline, style, children}) => {
   const r = region ?? {x: 0, y: 0, w: img.width, h: img.height};
   const s = scale ?? (width ? width / r.w : 1);
-  const pix = pixelated ?? s > 1.01;
+  const pix = pixelated ?? (!img.smooth && s > 1.01);
   const clipPath = outline
     ? `polygon(${outline.map(([x, y]) => `${((x - r.x) * s).toFixed(2)}px ${((y - r.y) * s).toFixed(2)}px`).join(', ')})`
     : undefined;

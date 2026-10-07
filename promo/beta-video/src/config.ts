@@ -45,8 +45,11 @@ export const SCREEN_DIR = 'screens';
 
 /** Rechteck in Pixeln innerhalb eines Screenshots (für Teil-Ausschnitte / Markierungen). */
 export type Region = {x: number; y: number; w: number; h: number};
-/** Ein Screenshot-Ausschnitt: Datei + Originalgröße in Pixeln. */
-export type ScreenImage = {file: string; width: number; height: number};
+/**
+ * Ein Screenshot-Ausschnitt: Datei + Originalgröße in Pixeln.
+ * smooth = kein Pixel-Art (z. B. Discord-Screenshots): immer weich skalieren statt "pixelated".
+ */
+export type ScreenImage = {file: string; width: number; height: number; smooth?: boolean};
 
 /**
  * Ausschnitte aus den Ingame-Screenshots (alle PNG, Originalauflösung, ohne Snipping-Tool-Popup).
@@ -76,6 +79,20 @@ export const SCREENS = {
   scoreboardEconomy: {file: 'scoreboard-economy.png', width: 428, height: 140},
   /** Banner "DISCORD /dc | TEAMSPEAK /ts" */
   discordBanner: {file: 'discord-banner.png', width: 464, height: 150},
+
+  // --- Discord (echte Screenshots vom Galacticfy-Discord, KEIN Pixel-Art -> smooth) ---
+  // Nur Embed-Abschnitt / Button / Formular / Kanalname – keine Mitgliederliste, keine
+  // fremden Namen oder Ticket-Kanäle. Neue Ausschnitte bitte genauso eng schneiden.
+  /** Kanal-Kopfzeile "# 🎫 | tickets" (schwarzer Hintergrund) */
+  discordChannel: {file: 'discord-channel.png', width: 119, height: 32, smooth: true},
+  /** Embed-Abschnitt "Betatester werden" + Text + grüner Button "Jetzt bewerben"
+   *  (im Video nur Überschrift + Text: SCREEN_REGIONS.discordApplyText) */
+  discordApply: {file: 'discord-apply.png', width: 589, height: 62, smooth: true},
+  /** nur der Button "Jetzt bewerben" (abgerundete Ecken transparent) – im Video groß als
+   *  eigene Zeile unter dem Text (Glow, Klick, Blitz) */
+  discordApplyButton: {file: 'discord-apply-button.png', width: 142, height: 32, smooth: true},
+  /** Formular "Betatester" (Modal, Ecken transparent) */
+  discordForm: {file: 'discord-form.png', width: 480, height: 786, smooth: true},
 } satisfies Record<string, ScreenImage>;
 
 /** Teil-Ausschnitte / Markierungen innerhalb der Screenshots (Pixel im jeweiligen PNG). */
@@ -95,6 +112,13 @@ export const SCREEN_REGIONS = {
   onlineMax: {x: 269, y: 12, w: 76, h: 42},
   /** Discord-Banner: "/dc" (wird markiert) */
   discordCommand: {x: 130, y: 96, w: 52, h: 28},
+  /** discord-apply.png: nur Überschrift "Betatester werden" + Beschreibung (ohne den Button
+   *  rechts daneben, der kommt groß als eigene Zeile: SCREENS.discordApplyButton) */
+  discordApplyText: {x: 6, y: 3, w: 404, h: 56},
+  /** discord-form.png: Button "Absenden" (wird kurz markiert) */
+  discordFormSubmit: {x: 244, y: 721, w: 211, h: 40},
+  /** discord-form.png: Text-Cursor im Feld "Minecraft-Name" (blinkt im Video) */
+  discordFormCaret: {x: 37, y: 190, w: 3, h: 23},
 } satisfies Record<string, Region>;
 
 /**
@@ -267,13 +291,32 @@ export const SLOTS = {
   alarmLabel: 'SCHNELL SEIN!',
 };
 
-/** Discord-Segment: echtes Banner "DISCORD /dc | TEAMSPEAK /ts" + Button. Zeiten ab Segmentstart. */
+/**
+ * Discord-Segment: der ECHTE Bewerbungsweg. Oben das Ingame-Banner "DISCORD /dc", darunter
+ * der Kanal "# tickets" mit dem Embed-Abschnitt "Betatester werden" und (groß, eigene Zeile)
+ * dem Button "Jetzt bewerben"; der Cursor klickt ihn, dann ploppt das echte Formular
+ * "Betatester" auf (mittig, Hintergrund abgedunkelt wie in Discord) und geht kurz vor der
+ * End-Card wieder zu. Alles echte Screenshots (SCREENS.discord*), Zeiten ab Segmentstart.
+ */
 export const DISCORD = {
-  button: 'Ticket öffnen',
   /** Wann "/dc" im Banner markiert wird (bei "Discord") */
   highlightAt: 0.9,
-  /** Wann der Cursor den Button klickt (bei "Ticket") */
-  clickAt: 1.7,
+  /** Wann der Cursor "Jetzt bewerben" klickt (bei "öffne ein Ticket") */
+  clickAt: 1.3,
+  /** Wann das Formular "Betatester" aufploppt */
+  formAt: 1.5,
+  /** Wann "Absenden" im Formular kurz markiert wird */
+  submitHintAt: 2.05,
+  /** Wann das Popup wieder zugeht (Formular + Abdunklung + Discord-Fenster blenden aus), damit
+   *  vor der End-Card noch kurz der Flug ins lila Portal zu sehen ist */
+  closeAt: 2.55,
+  /** Größe des Formulars (480×786 px Original): 1,18 = ca. 566×928 px, passt zwischen
+   *  obere Safe-Zone und Caption */
+  formScale: 1.18,
+  /** Oberkante des Formulars im Bild (px von oben) */
+  formTop: 158,
+  /** Abdunklung hinter dem Formular (0–1), wie bei einem Discord-Popup */
+  formDim: 0.72,
 };
 
 /** End-Card */
@@ -281,7 +324,16 @@ export const END_CARD: {icon: 'rocket' | 'gamepad' | 'gift' | 'pointer'; text: s
   {icon: 'rocket', text: '**20 BETATESTER** GESUCHT'},
   {icon: 'gamepad', text: '**Java** & **Bedrock**'},
   {icon: 'gift', text: 'Prefix **[Beta Tester]** + Belohnungen'},
-  {icon: 'pointer', text: 'Jetzt bewerben – **Discord**'},
+];
+/**
+ * Letzte, hervorgehobene End-Card-Zeile: der echte Weg zur Bewerbung, als Schritte mit
+ * Pfeilen dazwischen. look: 'text' = normaler Text (**…** = Neon), 'channel' = Discord-Kanal,
+ * 'button' = grüner Discord-Button (wie der echte "Jetzt bewerben"-Button).
+ */
+export const END_CARD_STEPS: {text: string; look: 'text' | 'channel' | 'button'}[] = [
+  {text: 'Discord **/dc**', look: 'text'},
+  {text: '#tickets', look: 'channel'},
+  {text: 'Jetzt bewerben', look: 'button'},
 ];
 /** Kleine Info-Kacheln unter den End-Card-Zeilen (Website + Discord-Befehl). */
 export const END_CARD_LINKS = ['**galacticfy.de**', 'Discord: **/dc**'];
