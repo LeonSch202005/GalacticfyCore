@@ -9,17 +9,22 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
-import {Background} from './Background';
+import {Background, SpaceParticles} from './Background';
+import {CutFlash, FootageGrade, FootageShot} from './Footage';
 import {
   BRAND,
   COLORS,
   END_CARD,
+  END_CARD_CLIP,
+  END_CARD_CLIP_BLUR,
+  END_CARD_CLIP_DIM,
   END_CARD_FOOTER,
   FONT_HEAVY,
   FONT_PIXEL,
   MAIN_SECONDS,
   SEGMENTS,
   Segment,
+  SegmentVisual,
   TOTAL_FRAMES,
   USE_VOICEOVER,
   VOICEOVER_FILE,
@@ -36,13 +41,24 @@ import {
   TestersVisual,
 } from './Visuals';
 
-// Layout (1080x1920): Header oben ab 150px, Visual 300–1080, Caption 1110–1540,
-// unterste ~380px bleiben frei (TikTok/Reels-UI).
+// Layout (1080x1920): Header oben ab 150px, Visual-Bereich 290–1085, Caption 1110–1540,
+// unterste ~380px bleiben frei (TikTok/Reels-UI). Dahinter läuft Vollbild-Gameplay.
 const SAFE_TOP = 150;
-const VISUAL_TOP = 300;
-const VISUAL_HEIGHT = 780;
+const VISUAL_TOP = 290;
+const VISUAL_HEIGHT = 795;
 const CAPTION_TOP = 1110;
 const CAPTION_HEIGHT = 430;
+
+/** Kompakte Visuals sitzen oben (unter dem Logo) oder unten (direkt über der Caption),
+ *  damit das Gameplay in der Bildmitte frei bleibt. */
+const VISUAL_ALIGN: Record<SegmentVisual, 'top' | 'bottom'> = {
+  intro: 'top',
+  testers: 'bottom',
+  checklist: 'top',
+  chat: 'bottom',
+  slots: 'top',
+  discord: 'bottom',
+};
 
 const VISUALS = {
   intro: IntroVisual,
@@ -108,8 +124,9 @@ const SegmentScene: React.FC<{seg: Segment}> = ({seg}) => {
           right: 0,
           height: VISUAL_HEIGHT,
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: VISUAL_ALIGN[seg.visual] === 'top' ? 'flex-start' : 'flex-end',
           transform: `scale(${1 - out * 0.12}) translateY(${-out * 40}px)`,
         }}
       >
@@ -221,16 +238,60 @@ const EndCard: React.FC = () => {
   );
 };
 
+/** Weichgezeichnetes Gameplay hinter der End-Card. */
+const EndCardBackdrop: React.FC<{durationInFrames: number}> = ({durationInFrames}) => {
+  if (!END_CARD_CLIP) return null;
+  return (
+    <AbsoluteFill>
+      <FootageShot
+        clip={END_CARD_CLIP}
+        durationInFrames={durationInFrames}
+        punchIn={false}
+        blur={END_CARD_CLIP_BLUR}
+      />
+      <AbsoluteFill style={{background: COLORS.purpleDeep, opacity: 0.35, mixBlendMode: 'color'}} />
+      <AbsoluteFill style={{background: `rgba(5,3,15,${END_CARD_CLIP_DIM})`}} />
+    </AbsoluteFill>
+  );
+};
+
 export const GalacticfyBeta: React.FC = () => {
   const frame = useCurrentFrame();
   const mainFrames = sec(MAIN_SECONDS);
+  const endFrames = TOTAL_FRAMES - mainFrames;
   const headerOpacity = interpolate(frame, [mainFrames - 8, mainFrames], [1, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  // Sterne/Partikel: dezent über dem Gameplay, kräftiger auf der End-Card
+  const particleOpacity = interpolate(frame, [mainFrames - 4, mainFrames + 6], [0.38, 0.9], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
   return (
     <AbsoluteFill style={{backgroundColor: COLORS.bg}}>
       <Background />
+
+      {/* Gameplay-Clips je Segment (Datei + Trim in config.ts) */}
+      {SEGMENTS.map((seg, i) => (
+        <Sequence
+          key={`clip-${i}`}
+          from={sec(seg.from)}
+          durationInFrames={sec(seg.to - seg.from)}
+          premountFor={30}
+          name={`Clip ${i + 1}: ${seg.clip.file}`}
+        >
+          <FootageShot clip={seg.clip} durationInFrames={sec(seg.to - seg.from)} punchIn={i > 0} />
+        </Sequence>
+      ))}
+      <Sequence durationInFrames={mainFrames} name="Farblook">
+        <FootageGrade />
+      </Sequence>
+      <Sequence from={mainFrames} durationInFrames={endFrames} premountFor={30} name="End-Card-Clip">
+        <EndCardBackdrop durationInFrames={endFrames} />
+      </Sequence>
+
+      <SpaceParticles opacity={particleOpacity} starOpacity={0.7} />
 
       {/* Header (Logo) während der Hauptsegmente */}
       <AbsoluteFill
@@ -256,8 +317,18 @@ export const GalacticfyBeta: React.FC = () => {
         </Sequence>
       ))}
 
-      <Sequence from={mainFrames} durationInFrames={TOTAL_FRAMES - mainFrames} name="End-Card">
+      <Sequence from={mainFrames} durationInFrames={endFrames} name="End-Card">
         <EndCard />
+      </Sequence>
+
+      {/* Blitz-Übergänge an den Schnitten */}
+      {SEGMENTS.slice(1).map((seg, i) => (
+        <Sequence key={`flash-${i}`} from={sec(seg.from)} durationInFrames={10} name="Flash">
+          <CutFlash strength={0.42} length={7} />
+        </Sequence>
+      ))}
+      <Sequence from={mainFrames} durationInFrames={14} name="Flash End-Card">
+        <CutFlash color={COLORS.purple} strength={0.9} length={12} />
       </Sequence>
 
       {/* Voiceover: public/voiceover.mp3 ablegen und USE_VOICEOVER in config.ts auf true setzen */}

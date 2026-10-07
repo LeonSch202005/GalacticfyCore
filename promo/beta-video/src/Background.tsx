@@ -5,7 +5,11 @@ import {COLORS, HEIGHT, WIDTH} from './config';
 const STAR_COUNT = 220;
 const BLOCK_COUNT = 26;
 
-export const Background: React.FC = () => {
+/** Sterne + Pixel-Block-Partikel (auch dezent über dem Gameplay genutzt). */
+export const SpaceParticles: React.FC<{opacity?: number; starOpacity?: number}> = ({
+  opacity = 1,
+  starOpacity = 1,
+}) => {
   const frame = useCurrentFrame();
 
   const stars = useMemo(
@@ -37,27 +41,9 @@ export const Background: React.FC = () => {
     [],
   );
 
-  // Nebel bewegt sich langsam
-  const n1x = 30 + Math.sin(frame / 90) * 12;
-  const n1y = 25 + Math.cos(frame / 120) * 8;
-  const n2x = 70 + Math.cos(frame / 100) * 14;
-  const n2y = 70 + Math.sin(frame / 80) * 10;
-  const hue = interpolate(Math.sin(frame / 150), [-1, 1], [0, 25]);
-
   return (
-    <AbsoluteFill style={{backgroundColor: COLORS.bg, overflow: 'hidden'}}>
-      <AbsoluteFill
-        style={{
-          background: [
-            `radial-gradient(ellipse 70% 45% at ${n1x}% ${n1y}%, rgba(140,40,255,0.55), transparent 70%)`,
-            `radial-gradient(ellipse 65% 40% at ${n2x}% ${n2y}%, rgba(20,200,255,0.35), transparent 70%)`,
-            `radial-gradient(ellipse 50% 30% at 50% 50%, rgba(255,60,200,0.18), transparent 75%)`,
-            `linear-gradient(180deg, #070320 0%, #0b0530 45%, #04020c 100%)`,
-          ].join(','),
-          filter: `hue-rotate(${hue}deg)`,
-        }}
-      />
-      <svg width={WIDTH} height={HEIGHT} style={{position: 'absolute'}}>
+    <AbsoluteFill style={{opacity, pointerEvents: 'none'}}>
+      <svg width={WIDTH} height={HEIGHT} style={{position: 'absolute', opacity: starOpacity}}>
         {stars.map((s, i) => {
           const y = (s.y + frame * s.speed) % HEIGHT;
           const tw = 0.35 + 0.65 * Math.abs(Math.sin(frame / 14 + s.phase));
@@ -93,6 +79,34 @@ export const Background: React.FC = () => {
           />
         );
       })}
+    </AbsoluteFill>
+  );
+};
+
+export const Background: React.FC = () => {
+  const frame = useCurrentFrame();
+
+  // Nebel bewegt sich langsam
+  const n1x = 30 + Math.sin(frame / 90) * 12;
+  const n1y = 25 + Math.cos(frame / 120) * 8;
+  const n2x = 70 + Math.cos(frame / 100) * 14;
+  const n2y = 70 + Math.sin(frame / 80) * 10;
+  const hue = interpolate(Math.sin(frame / 150), [-1, 1], [0, 25]);
+
+  return (
+    <AbsoluteFill style={{backgroundColor: COLORS.bg, overflow: 'hidden'}}>
+      <AbsoluteFill
+        style={{
+          background: [
+            `radial-gradient(ellipse 70% 45% at ${n1x}% ${n1y}%, rgba(140,40,255,0.55), transparent 70%)`,
+            `radial-gradient(ellipse 65% 40% at ${n2x}% ${n2y}%, rgba(20,200,255,0.35), transparent 70%)`,
+            `radial-gradient(ellipse 50% 30% at 50% 50%, rgba(255,60,200,0.18), transparent 75%)`,
+            `linear-gradient(180deg, #070320 0%, #0b0530 45%, #04020c 100%)`,
+          ].join(','),
+          filter: `hue-rotate(${hue}deg)`,
+        }}
+      />
+      <SpaceParticles />
       {/* Vignette */}
       <AbsoluteFill
         style={{

@@ -87,7 +87,7 @@ export const KineticCaption: React.FC<{
         color: COLORS.white,
         textAlign: 'center',
         letterSpacing: -1,
-        textShadow: '0 4px 0 rgba(0,0,0,0.6), 0 0 24px rgba(0,0,0,0.8)',
+        textShadow: '0 0 4px rgba(0,0,0,0.9), 0 4px 0 rgba(0,0,0,0.7), 0 0 26px rgba(0,0,0,0.85)',
         display: 'flex',
         flexWrap: 'wrap',
         justifyContent: 'center',
