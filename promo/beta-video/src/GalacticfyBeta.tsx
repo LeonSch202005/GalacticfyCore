@@ -4,6 +4,7 @@ import {
   Audio,
   Sequence,
   interpolate,
+  random,
   spring,
   staticFile,
   useCurrentFrame,
@@ -27,14 +28,23 @@ import {
   END_CARD_STEPS,
   FONT_HEAVY,
   FONT_PIXEL,
+  FPS,
   MAIN_SECONDS,
+  MUSIC,
+  PUNCHES,
   SCREENS,
   SEGMENTS,
+  SFX,
   Segment,
   SegmentVisual,
   TOTAL_FRAMES,
+  USE_MUSIC,
+  USE_SFX,
   USE_VOICEOVER,
+  VOICE_SPEECH,
   cutSeconds,
+  INTRO,
+  SLOTS,
   VOICEOVER_FILE,
   VOICEOVER_VOLUME,
   sec,
@@ -46,8 +56,9 @@ import {
   ChecklistVisual,
   DiscordVisual,
   IntroVisual,
+  introGlitchAt,
   PrefixVisual,
-  rewardStarts,
+  rewardHits,
   SlotsVisual,
   TestersVisual,
 } from './Visuals';
@@ -117,12 +128,15 @@ const Header: React.FC<{scale?: number}> = ({scale = 1}) => {
   );
 };
 
-const SegmentScene: React.FC<{seg: Segment}> = ({seg}) => {
+const SegmentScene: React.FC<{seg: Segment; first?: boolean}> = ({seg, first}) => {
   const frame = useCurrentFrame();
   const duration = sec(seg.to - seg.from);
   const Visual = VISUALS[seg.visual];
-  const fadeIn = interpolate(frame, [0, 4], [0.3, 1], {extrapolateRight: 'clamp'});
-  const fadeOut = interpolate(frame, [duration - 5, duration], [1, 0.1], {
+  // erstes Segment: schon in Frame 0 voll da (Hook – kein Einblenden)
+  const fadeIn = first ? 1 : interpolate(frame, [0, 4], [0.3, 1], {extrapolateRight: 'clamp'});
+  // kurzes Ausblenden (3 Frames) – der Blitz am Schnitt übernimmt den Rest; so stehen die letzten
+  // Grafiken eines Segments (z. B. JAVA & BEDROCK, KOSTENLOS!) länger voll da
+  const fadeOut = interpolate(frame, [duration - 3, duration], [1, 0.1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
@@ -242,18 +256,24 @@ const EndCardImageRow: React.FC<{
   shineAt: number;
   progress: number;
   pulse?: boolean;
-}> = ({img, visibleWidth, shineAt, progress, pulse}) => {
+  /** Glanz + Puls wiederholen sich alle N Frames (ab shineAt) – hält die End-Card lebendig */
+  loopEvery?: number;
+}> = ({img, visibleWidth, shineAt, progress, pulse, loopEvery}) => {
   const frame = useCurrentFrame();
   const s = visibleWidth / img.box.w;
   const w = img.width * s;
-  const shineF = frame - shineAt;
+  const shineF = loopEvery && frame >= shineAt ? (frame - shineAt) % loopEvery : frame - shineAt;
+  // Herzschlag-Puls im Takt des Glanzes (nur mit loopEvery), sonst leichtes Atmen
+  const beat = loopEvery && frame >= shineAt ? interpolate(shineF, [0, 3, 12], [0, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}) : 0;
+  const breathe = pulse ? 1 + 0.012 * Math.sin(frame / 5) : 1;
   return (
     <div
       style={{
         position: 'relative',
         height: img.box.h * s,
-        transform: `translateX(${(1 - progress) * 900}px) scale(${pulse ? 1 + 0.012 * Math.sin(frame / 5) : 1})`,
+        transform: `translateX(${(1 - progress) * 900}px) scale(${breathe * (1 + 0.045 * beat)})`,
         opacity: Math.min(1, progress * 1.5),
+        filter: beat > 0.01 ? `brightness(${1 + 0.25 * beat})` : undefined,
       }}
     >
       <div style={{position: 'absolute', left: -img.box.x * s, top: -img.box.y * s}}>
@@ -360,7 +380,7 @@ const EndCard: React.FC = () => {
           );
         })}
         {/* Deine Leiste "DISCORD discord.gg/…" (ersetzt die Zeile Discord /dc -> #tickets -> Jetzt bewerben) */}
-        <EndCardImageRow img={BRAND.images.discordLink} visibleWidth={800} shineAt={40} progress={stepsIn} pulse />
+        <EndCardImageRow img={BRAND.images.discordLink} visibleWidth={800} shineAt={40} progress={stepsIn} pulse loopEvery={24} />
       </div>
       <div
         style={{
@@ -374,12 +394,13 @@ const EndCard: React.FC = () => {
           color: COLORS.gold,
           textShadow: '4px 4px 0 #3a2400',
           opacity: interpolate(frame, [30, 40], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
-          transform: `translateY(${Math.sin(frame / 5) * 8}px)`,
+          transform: `translateY(${Math.sin(frame / 5) * 6}px)`,
         }}
       >
-        <PixelIcon name="arrowUp" size={52} glow={COLORS.cyan} />
+        {/* Pfeile hüpfen im Takt nach oben (zeigen auf den Link im Profil) */}
+        <PixelIcon name="arrowUp" size={52} glow={COLORS.cyan} style={{transform: `translateY(${-14 * Math.abs(Math.sin((frame * Math.PI) / 24))}px)`}} />
         {END_CARD_FOOTER}
-        <PixelIcon name="arrowUp" size={52} glow={COLORS.cyan} />
+        <PixelIcon name="arrowUp" size={52} glow={COLORS.cyan} style={{transform: `translateY(${-14 * Math.abs(Math.sin((frame * Math.PI) / 24))}px)`}} />
       </div>
     </AbsoluteFill>
   );
@@ -402,14 +423,105 @@ const EndCardBackdrop: React.FC<{durationInFrames: number}> = ({durationInFrames
   );
 };
 
-export const GalacticfyBeta: React.FC = () => {
+/**
+ * Glitch übers ganze Bild bei "nicht fertig" (INTRO.glitches): farbige, verschobene Streifen
+ * (RGB-Versatz-Look) für ein paar Frames. Läuft in der Sequence des Intro-Segments.
+ */
+const IntroGlitchOverlay: React.FC = () => {
+  const frame = useCurrentFrame();
+  const g = introGlitchAt(frame);
+  if (g <= 0.02) return null;
+  const bands = [0, 1, 2, 3, 4, 5].map((b) => ({
+    top: random(`ig-t-${frame}-${b}`) * 100,
+    h: 1.5 + random(`ig-h-${frame}-${b}`) * 7,
+    dx: (random(`ig-x-${frame}-${b}`) - 0.5) * 160 * g,
+    cyan: random(`ig-c-${frame}-${b}`) > 0.5,
+  }));
+  return (
+    <AbsoluteFill style={{pointerEvents: 'none', mixBlendMode: 'screen'}}>
+      {bands.map((b, i) => (
+        <div
+          key={i}
+          style={{
+            position: 'absolute',
+            left: -100,
+            right: -100,
+            top: `${b.top}%`,
+            height: `${b.h}%`,
+            transform: `translateX(${b.dx}px)`,
+            background: b.cyan
+              ? `linear-gradient(90deg, transparent, ${COLORS.cyan}66 20%, ${COLORS.cyan}aa 50%, transparent)`
+              : 'linear-gradient(90deg, transparent, rgba(255,40,110,0.45) 30%, rgba(255,40,110,0.7) 60%, transparent)',
+            opacity: g,
+          }}
+        />
+      ))}
+      {/* kurzer Farbstich auf dem ganzen Bild */}
+      <AbsoluteFill style={{background: `rgba(255,30,90,${0.12 * g})`}} />
+    </AbsoluteFill>
+  );
+};
+
+const smooth01 = (x: number) => {
+  const t = Math.min(1, Math.max(0, x));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * Lautstärke der Musik in Frame f (ab Videostart): MUSIC.volume in Sprechpausen, MUSIC.ducked
+ * während die Stimme spricht (VOICE_SPEECH, weiche Rampen von MUSIC.rampFrames), MUSIC.endCard auf
+ * der End-Card; Ein-/Ausblenden am Anfang/Ende.
+ */
+export const musicVolumeAt = (f: number, voice: boolean) => {
+  const t = f / FPS;
+  const ramp = MUSIC.rampFrames / FPS;
+  let duck = 0;
+  if (voice) {
+    for (const [a, b] of VOICE_SPEECH) {
+      let d = 0;
+      if (t >= a && t <= b) d = 1;
+      else if (t < a) d = smooth01((t - (a - ramp)) / ramp);
+      else d = smooth01(1 - (t - b) / ramp);
+      duck = Math.max(duck, d);
+    }
+  }
+  const base = interpolate(t, [MAIN_SECONDS - 0.1, MAIN_SECONDS + 0.15], [MUSIC.volume, MUSIC.endCard], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  const total = TOTAL_FRAMES / FPS;
+  const fade = Math.min(smooth01(t / MUSIC.fadeIn), smooth01((total - t) / MUSIC.fadeOut));
+  return (base + (MUSIC.ducked - base) * duck) * fade;
+};
+
+/** Start-Frame eines Sound-Effekts im Video (Segmentstart bzw. End-Card + at). */
+const sfxFrame = (seg: SegmentVisual | 'endCard', at: number) => {
+  if (seg === 'endCard') return sec(MAIN_SECONDS) + sec(at);
+  const s = SEGMENTS.find((x) => x.visual === seg);
+  if (!s) throw new Error(`SFX: Segment "${seg}" gibt es nicht (src/config.ts, SFX).`);
+  return sec(s.from) + sec(at);
+};
+
+/** Zoom-Punch-Hüllkurve: schnell rein (2 Frames), dann ausfedern. */
+const punchEnv = (f: number) => (f < 0 ? 0 : f < 2 ? f / 2 : Math.exp(-(f - 2) / 5));
+
+export type GalacticfyProps = {
+  /** Musik-Bett an/aus (die zweite Komposition "GalacticfyBeta-OhneMusik" setzt false) */
+  music?: boolean;
+  /** Gesamtlautstärke aller Töne (1 = normal). scripts/render.sh rendert mit 0,708 (−3 dB
+   *  Headroom, damit Remotions 16-bit-Mix nie clippt) und holt die 3 dB beim Mastern mit einem
+   *  True-Peak-Limiter zurück. */
+  masterGain?: number;
+};
+
+export const GalacticfyBeta: React.FC<GalacticfyProps> = ({music = true, masterGain = 1}) => {
   const frame = useCurrentFrame();
   const mainFrames = sec(MAIN_SECONDS);
   const endFrames = TOTAL_FRAMES - mainFrames;
   // Header blendet vor der End-Card aus – und solange das Discord-Formular offen ist
-  // (das Popup liegt abgedunkelt über allem, nur die Caption bleibt darüber).
+  // (das Popup liegt abgedunkelt über allem, nur die Banner unten bleiben darüber).
   const discordSeg = SEGMENTS.find((s) => s.visual === 'discord');
-  const formFrame = discordSeg ? sec(discordSeg.from + DISCORD.formAt) : TOTAL_FRAMES;
+  const formFrame = discordSeg ? sec(discordSeg.from) + sec(DISCORD.formAt) : TOTAL_FRAMES;
   const headerOpacity = Math.min(
     interpolate(frame, [mainFrames - 8, mainFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
     interpolate(frame, [formFrame, formFrame + 6], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
@@ -419,54 +531,90 @@ export const GalacticfyBeta: React.FC = () => {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
-  // Bild-Wackeln: Raketen-Übergänge + Banner-Einschläge (Segment 3) + Einschlag der EXKLUSIV-Pill
+  // Bild-Wackeln: Raketen-Übergänge, Glitch im Intro, alle Banner-Einschläge, Alarm in Segment 5
   const impacts = useMemo<Impact[]>(() => {
     const list: Impact[] = BRAND.wipes.map((w) => ({frame: sec(cutSeconds(w.cut)) - 1, amp: BRAND.wipeShake, len: 9}));
-    const checklistSeg = SEGMENTS.find((s) => s.visual === 'checklist');
+    const segOf = (v: SegmentVisual) => SEGMENTS.find((s) => s.visual === v);
+    const dur = (s: Segment) => sec(s.to - s.from);
+    const intro = segOf('intro');
+    if (intro) {
+      // Start-Glitch in Frame 0, Glitches bei "nicht fertig", Fehler-Zustand ("deshalb"), Sticker ("dich")
+      list.push({frame: sec(intro.from) + sec(INTRO.bootGlitch.at), amp: 12, len: 7});
+      INTRO.glitches.forEach((t) => list.push({frame: sec(intro.from) + sec(t), amp: 10, len: 6}));
+      list.push({frame: sec(intro.from) + sec(INTRO.errorAt), amp: 6, len: 6});
+      list.push({frame: sec(intro.from) + sec(INTRO.stickerAt), amp: 8, len: 8});
+    }
+    const checklistSeg = segOf('checklist');
     if (checklistSeg && BRAND.bannerShake > 0) {
-      const d = sec(checklistSeg.to - checklistSeg.from);
       BRAND.checklist.banners.forEach((b) =>
         list.push({
-          frame: sec(checklistSeg.from) + cueFrame(b.cue, checklistSeg.text, d) + BRAND.checklist.slamFrames,
+          frame: sec(checklistSeg.from) + cueFrame(b.cue, checklistSeg.text, dur(checklistSeg)) + BRAND.checklist.slamFrames,
           amp: BRAND.bannerShake,
           len: 7,
         }),
       );
     }
-    const prefixSeg = SEGMENTS.find((s) => s.visual === 'prefix');
+    const prefixSeg = segOf('prefix');
     if (prefixSeg) {
-      const d = sec(prefixSeg.to - prefixSeg.from);
-      const starts = rewardStarts(d, prefixSeg.text);
-      starts.forEach((st) =>
-        list.push({frame: sec(prefixSeg.from) + st + BRAND.rewards.slamFrames, amp: BRAND.slamShake, len: 8}),
+      rewardHits(dur(prefixSeg), prefixSeg.text).forEach((h) =>
+        list.push({frame: sec(prefixSeg.from) + h, amp: BRAND.slamShake, len: 8}),
       );
-      list.push({
-        frame: sec(prefixSeg.from) + starts[starts.length - 1] + sec(BRAND.rewards.kostenlos.after) + 5,
-        amp: BRAND.slamShake,
-        len: 8,
-      });
+    }
+    const slotsSeg = segOf('slots');
+    if (slotsSeg) {
+      list.push({frame: sec(slotsSeg.from), amp: 9, len: 9});
+      list.push({frame: sec(slotsSeg.from) + sec(SLOTS.alarmAt), amp: 7, len: 9});
+    }
+    if (discordSeg) {
+      BRAND.cta.banners.forEach((b) =>
+        list.push({
+          frame: sec(discordSeg.from) + cueFrame(b.cue, discordSeg.text, dur(discordSeg)) + BRAND.cta.slamFrames,
+          amp: BRAND.bannerShake + 1,
+          len: 7,
+        }),
+      );
     }
     return list;
-  }, []);
+  }, [discordSeg]);
   const shake = shakeAt(frame, impacts);
+  // Zoom-Punches (PUNCHES): das ganze Bild springt kurz rein
+  const punch = PUNCHES.reduce((p, pu) => {
+    const seg = SEGMENTS.find((s) => s.visual === pu.seg);
+    if (!seg) return p;
+    return p + pu.amount * punchEnv(frame - (sec(seg.from) + sec(pu.at)));
+  }, 0);
+  const zoom = shake.scale * (1 + punch);
+  // Clips je Segment, inkl. weiterer Schnitte innerhalb eines Segments (Segment.cuts)
+  const shots = SEGMENTS.flatMap((seg, i) => {
+    const from = sec(seg.from);
+    const to = from + sec(seg.to - seg.from);
+    const parts = [{at: 0, clip: seg.clip}, ...(seg.cuts ?? [])];
+    return parts.map((p, k) => {
+      const start = from + sec(p.at);
+      const end = k < parts.length - 1 ? from + sec(parts[k + 1].at) : to;
+      // allererster Shot: Zoom-Punch ab Frame 0 (Bewegung sofort), aber ohne Weichzeichner
+      return {key: `${i}-${k}`, start, len: end - start, clip: p.clip, punchBlur: i > 0 || k > 0, inner: k > 0};
+    });
+  });
+  const withMusic = USE_MUSIC && music;
   return (
     <AbsoluteFill style={{backgroundColor: COLORS.bg}}>
       {/* Alles Sichtbare wackelt gemeinsam (shakeAt in Brand.tsx); minimaler Zoom verdeckt die Ränder */}
       <AbsoluteFill
-        style={{transform: shake.scale === 1 ? undefined : `translate(${shake.x}px, ${shake.y}px) scale(${shake.scale})`}}
+        style={{transform: zoom === 1 ? undefined : `translate(${shake.x}px, ${shake.y}px) scale(${zoom})`}}
       >
         <Background />
 
         {/* Gameplay-Clips je Segment (Datei + Trim in config.ts) */}
-        {SEGMENTS.map((seg, i) => (
+        {shots.map((sh) => (
           <Sequence
-            key={`clip-${i}`}
-            from={sec(seg.from)}
-            durationInFrames={sec(seg.to - seg.from)}
+            key={`clip-${sh.key}`}
+            from={sh.start}
+            durationInFrames={sh.len}
             premountFor={30}
-            name={`Clip ${i + 1}: ${seg.clip.file}`}
+            name={`Clip ${sh.key}: ${sh.clip.file}`}
           >
-            <FootageShot clip={seg.clip} durationInFrames={sec(seg.to - seg.from)} punchIn={i > 0} />
+            <FootageShot clip={sh.clip} durationInFrames={sh.len} punchIn punchBlur={sh.punchBlur} />
           </Sequence>
         ))}
         <Sequence durationInFrames={mainFrames} name="Farblook">
@@ -498,7 +646,7 @@ export const GalacticfyBeta: React.FC = () => {
             durationInFrames={sec(seg.to - seg.from)}
             name={`${i + 1}: ${seg.visual}`}
           >
-            <SegmentScene seg={seg} />
+            <SegmentScene seg={seg} first={i === 0} />
           </Sequence>
         ))}
 
@@ -506,12 +654,24 @@ export const GalacticfyBeta: React.FC = () => {
           <EndCard />
         </Sequence>
 
-        {/* Blitz-Übergänge an den Schnitten */}
+        {/* Glitch übers ganze Bild bei "nicht fertig" */}
+        <Sequence durationInFrames={sec(SEGMENTS[0].to - SEGMENTS[0].from)} name="Intro-Glitch">
+          <IntroGlitchOverlay />
+        </Sequence>
+
+        {/* Blitz-Übergänge an den Schnitten (Farbe je Segment: Segment.flash) */}
         {SEGMENTS.slice(1).map((seg, i) => (
           <Sequence key={`flash-${i}`} from={sec(seg.from)} durationInFrames={10} name="Flash">
-            <CutFlash strength={0.42} length={7} />
+            <CutFlash color={seg.flash ?? COLORS.cyan} strength={seg.flash ? 0.6 : 0.42} length={seg.flash ? 9 : 7} />
           </Sequence>
         ))}
+        {shots
+          .filter((sh) => sh.inner)
+          .map((sh) => (
+            <Sequence key={`flash-in-${sh.key}`} from={sh.start} durationInFrames={8} name="Flash (Schnitt im Segment)">
+              <CutFlash strength={0.28} length={6} />
+            </Sequence>
+          ))}
         <Sequence from={mainFrames} durationInFrames={14} name="Flash End-Card">
           <CutFlash color={COLORS.purple} strength={0.9} length={12} />
         </Sequence>
@@ -529,12 +689,27 @@ export const GalacticfyBeta: React.FC = () => {
         ))}
       </AbsoluteFill>
 
-      {/* Voiceover: public/voiceover.mp3 (USE_VOICEOVER in config.ts, false = stumm) */}
-      {USE_VOICEOVER ? <Audio src={staticFile(VOICEOVER_FILE)} volume={VOICEOVER_VOLUME} /> : null}
+      {/* Voiceover: public/voiceover.mp3 (USE_VOICEOVER in config.ts, false = ohne Stimme) */}
+      {USE_VOICEOVER ? (
+        <Audio src={staticFile(VOICEOVER_FILE)} volume={VOICEOVER_VOLUME * masterGain} name="Voiceover" />
+      ) : null}
+      {/* Musik-Bett mit Ducking unter der Stimme (USE_MUSIC / MUSIC in config.ts) */}
+      {withMusic ? (
+        <Audio src={staticFile(MUSIC.file)} volume={(f) => musicVolumeAt(f, USE_VOICEOVER) * masterGain} name="Musik" />
+      ) : null}
+      {/* Sound-Effekte (SFX in config.ts) */}
+      {USE_SFX
+        ? SFX.map((fx, i) => (
+            <Sequence key={`sfx-${i}`} from={sfxFrame(fx.seg, fx.at)} durationInFrames={45} name={`SFX: ${fx.label}`}>
+              <Audio src={staticFile(`sfx/${fx.file}`)} volume={fx.volume * masterGain} />
+            </Sequence>
+          ))
+        : null}
       {/* Mausklick-Sound beim Klick auf "Jetzt bewerben" (Discord-Segment) */}
       {DISCORD.clickSound && discordSeg ? (
-        <Sequence from={sec(discordSeg.from + DISCORD.clickAt) - 1} durationInFrames={sec(0.5)}>
-          <Audio src={staticFile(DISCORD.clickSound)} volume={DISCORD.clickVolume} />
+        // +1: das Knacken liegt auf dem ersten Frame, in dem der Button sichtbar eingedrückt ist
+        <Sequence from={sec(discordSeg.from) + sec(DISCORD.clickAt) + 1} durationInFrames={sec(0.5)} name="SFX: Mausklick">
+          <Audio src={staticFile(DISCORD.clickSound)} volume={DISCORD.clickVolume * masterGain} />
         </Sequence>
       ) : null}
     </AbsoluteFill>

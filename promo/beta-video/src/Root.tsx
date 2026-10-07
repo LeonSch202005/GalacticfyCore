@@ -5,13 +5,27 @@ import {FPS, HEIGHT, TOTAL_FRAMES, WIDTH} from './config';
 
 export const RemotionRoot: React.FC = () => {
   return (
-    <Composition
-      id="GalacticfyBeta"
-      component={GalacticfyBeta}
-      durationInFrames={TOTAL_FRAMES}
-      fps={FPS}
-      width={WIDTH}
-      height={HEIGHT}
-    />
+    <>
+      {/* Hauptvideo: Stimme + Musik + Sound-Effekte */}
+      <Composition
+        id="GalacticfyBeta"
+        component={GalacticfyBeta}
+        durationInFrames={TOTAL_FRAMES}
+        fps={FPS}
+        width={WIDTH}
+        height={HEIGHT}
+        defaultProps={{music: true, masterGain: 1}}
+      />
+      {/* gleiches Video ohne Musik (Stimme + Sound-Effekte) */}
+      <Composition
+        id="GalacticfyBeta-OhneMusik"
+        component={GalacticfyBeta}
+        durationInFrames={TOTAL_FRAMES}
+        fps={FPS}
+        width={WIDTH}
+        height={HEIGHT}
+        defaultProps={{music: false, masterGain: 1}}
+      />
+    </>
   );
 };

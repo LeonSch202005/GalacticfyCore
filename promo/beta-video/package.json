@@ -5,9 +5,10 @@
   "description": "Galacticfy Betatester Promo (Remotion)",
   "scripts": {
     "studio": "remotion studio",
-    "render": "remotion render GalacticfyBeta out/galacticfy-betatester.mp4 --codec=h264 --crf=23",
-    "stills": "remotion still GalacticfyBeta out/frame-045.png --frame=45 && remotion still GalacticfyBeta out/frame-150.png --frame=150 && remotion still GalacticfyBeta out/frame-205.png --frame=205 && remotion still GalacticfyBeta out/frame-236.png --frame=236 && remotion still GalacticfyBeta out/frame-265.png --frame=265 && remotion still GalacticfyBeta out/frame-310.png --frame=310 && remotion still GalacticfyBeta out/frame-400.png --frame=400 && remotion still GalacticfyBeta out/frame-440.png --frame=440 && remotion still GalacticfyBeta out/frame-510.png --frame=510 && remotion still GalacticfyBeta out/frame-550.png --frame=550 && remotion still GalacticfyBeta out/frame-605.png --frame=605 && remotion still GalacticfyBeta out/frame-640.png --frame=640 && remotion still GalacticfyBeta out/frame-700.png --frame=700",
+    "render": "bash scripts/render.sh",
+    "render:nur-musik": "bash scripts/render.sh --nur-musik",
     "render:ohne-ton": "remotion render GalacticfyBeta out/galacticfy-betatester-ohne-ton.mp4 --codec=h264 --crf=23 --muted",
+    "stills": "remotion still GalacticfyBeta out/frame-0000.png --frame=0 && remotion still GalacticfyBeta out/frame-0066.png --frame=66 && remotion still GalacticfyBeta out/frame-0165.png --frame=165 && remotion still GalacticfyBeta out/frame-0210.png --frame=210 && remotion still GalacticfyBeta out/frame-0285.png --frame=285 && remotion still GalacticfyBeta out/frame-0340.png --frame=340 && remotion still GalacticfyBeta out/frame-0380.png --frame=380 && remotion still GalacticfyBeta out/frame-0420.png --frame=420 && remotion still GalacticfyBeta out/frame-0500.png --frame=500 && remotion still GalacticfyBeta out/frame-0625.png --frame=625 && remotion still GalacticfyBeta out/frame-0700.png --frame=700 && remotion still GalacticfyBeta out/frame-0745.png --frame=745 && remotion still GalacticfyBeta out/frame-0830.png --frame=830 && remotion still GalacticfyBeta out/frame-0935.png --frame=935 && remotion still GalacticfyBeta out/frame-0980.png --frame=980 && remotion still GalacticfyBeta out/frame-1012.png --frame=1012 && remotion still GalacticfyBeta out/frame-1100.png --frame=1100",
     "voiceover": "bash scripts/make-voiceover.sh",
     "voiceover:import": "bash scripts/import-voiceover.sh"
   },

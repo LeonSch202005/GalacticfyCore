@@ -11,3 +11,5 @@ dist/
 !out/
 out/*
 !out/galacticfy-betatester.mp4
+!out/galacticfy-betatester-ohne-musik.mp4
+__pycache__/

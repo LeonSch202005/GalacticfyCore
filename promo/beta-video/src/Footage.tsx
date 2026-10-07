@@ -8,7 +8,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
-import {Animated, CLIP_DIR, ClipShot, COLORS, HEIGHT, WIDTH} from './config';
+import {Animated, CLIP_DIR, ClipShot, COLORS, HEIGHT, SHOW_CAPTIONS, WIDTH} from './config';
 
 // Die Aufnahmen sind 16:9 (1920x1080) und werden auf 9:16 zugeschnitten.
 const SRC_ASPECT = 16 / 9;
@@ -31,9 +31,11 @@ export const FootageShot: React.FC<{
   durationInFrames: number;
   /** Zoom-/Blur-"Punch" beim Reinschneiden */
   punchIn?: boolean;
+  /** Weichzeichner-Anteil des Punchs (Standard = punchIn; das allererste Bild startet scharf) */
+  punchBlur?: boolean;
   /** Dauerhafter Weichzeichner (px), z. B. für die End-Card */
   blur?: number;
-}> = ({clip, durationInFrames, punchIn = true, blur = 0}) => {
+}> = ({clip, durationInFrames, punchIn = true, punchBlur, blur = 0}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
 
@@ -53,7 +55,7 @@ export const FootageShot: React.FC<{
   const top = clampNum(HEIGHT / 2 - fy * h, HEIGHT - h, 0);
 
   const playbackRate = (clip.end - clip.start) / (durationInFrames / fps);
-  const cutBlur = punchIn ? interpolate(frame, [0, 6], [10, 0], clampOpts) : 0;
+  const cutBlur = (punchBlur ?? punchIn) ? interpolate(frame, [0, 6], [10, 0], clampOpts) : 0;
 
   return (
     <AbsoluteFill style={{overflow: 'hidden'}}>
@@ -70,7 +72,7 @@ export const FootageShot: React.FC<{
           height: h,
           maxWidth: 'none',
           objectFit: 'cover',
-          filter: `blur(${blur + cutBlur}px) saturate(1.2) contrast(1.08) brightness(1.06)`,
+          filter: `blur(${blur + cutBlur}px) saturate(1.2) contrast(1.08) brightness(${(1.06 * (clip.brightness ?? 1)).toFixed(3)})`,
         }}
       />
     </AbsoluteFill>
@@ -94,11 +96,13 @@ export const FootageGrade: React.FC = () => {
             'linear-gradient(180deg, rgba(5,3,15,0.78) 0px, rgba(5,3,15,0.45) 250px, rgba(5,3,15,0) 440px)',
         }}
       />
-      {/* Unten: Captions + App-UI */}
+      {/* Unten: Captions + App-UI. Ohne Untertitel (SHOW_CAPTIONS = false) nur leicht abdunkeln –
+          kräftiger erst ganz unten, wo TikTok/Reels die Beschreibung einblendet */}
       <AbsoluteFill
         style={{
-          background:
-            'linear-gradient(180deg, rgba(5,3,15,0) 880px, rgba(5,3,15,0.55) 1080px, rgba(5,3,15,0.68) 1250px, rgba(5,3,15,0.68) 1560px, rgba(5,3,15,0.5) 1920px)',
+          background: SHOW_CAPTIONS
+            ? 'linear-gradient(180deg, rgba(5,3,15,0) 880px, rgba(5,3,15,0.55) 1080px, rgba(5,3,15,0.68) 1250px, rgba(5,3,15,0.68) 1560px, rgba(5,3,15,0.5) 1920px)'
+            : 'linear-gradient(180deg, rgba(5,3,15,0) 900px, rgba(5,3,15,0.2) 1150px, rgba(5,3,15,0.36) 1450px, rgba(5,3,15,0.55) 1700px, rgba(5,3,15,0.55) 1920px)',
         }}
       />
       {/* Vignette */}

@@ -32,8 +32,8 @@ export LC_ALL=C
 #  Zeitfenster der 6 Caption-Zeilen in Sekunden – Spiegel von SEGMENTS in src/config.ts.
 #  Werden dort from/to geändert, hier mitziehen (das Skript warnt, wenn sie abweichen).
 # ------------------------------------------------------------------------------
-SEG_FROM=(0 3 6 11 15 19)
-SEG_TO=(3 6 11 15 19 22)
+SEG_FROM=(0 5.733333 10.1 18.633333 25.4 29.533333)
+SEG_TO=(5.733333 10.1 18.633333 25.4 29.533333 34.566667)
 END_CARD_SECONDS=3   # = END_CARD_SECONDS in config.ts (End-Card ohne Sprache)
 LEAD=0.10            # Zeile beginnt so viele Sekunden nach Segmentstart
 END_MARGIN=0.05      # ... und sollte so viele Sekunden vor Segmentende fertig sein

@@ -13,6 +13,7 @@ if (fs.existsSync(LOCAL_CHROMIUM)) {
 Config.setVideoImageFormat('jpeg');
 Config.setJpegQuality(90);
 Config.setCodec('h264');
-Config.setCrf(23);
+// CRF 23 wird in den Render-Befehlen übergeben (package.json, scripts/render.sh) – nicht hier,
+// sonst scheitert das reine Ton-Rendern (--codec=wav) für die Fassung ohne Musik.
 Config.setPixelFormat('yuv420p');
 Config.setOverwriteOutput(true);

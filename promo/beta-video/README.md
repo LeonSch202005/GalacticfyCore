@@ -1,22 +1,22 @@
 # Galacticfy – Betatester-Promo (Remotion)
 
-Vertikales Promo-Video (1080×1920, 30 fps, 25 s) für TikTok / Reels / Shorts.
-Caption-getriebenes Video mit deutschem Voiceover (`public/voiceover.mp3` – aktuell TTS,
-eigene Aufnahme: siehe [So nimmst du den Voiceover auf](#so-nimmst-du-den-voiceover-auf)).
-Im Hintergrund läuft echtes Gameplay vom Server (`public/clips/`), darüber
-Galacticfy-Look (Lila-Stich, Sterne/Pixel-Partikel, Neon-Captions, Glas-Panels) und
-**echte Screenshots** (`public/screens/`): Logo, Menü „Prefix wählen“, Chat mit
-`[Beta Tester]`, Scoreboard, Bossbar-Quest, das Discord-Banner mit `/dc` – und der echte
-Bewerbungsweg auf dem Discord (Kanal `#tickets` → „Jetzt bewerben“ → Formular „Betatester“).
-Die großen Hingucker sind **deine eigenen Grafiken** (`public/brand/`): das „20 TESTER
-GESUCHT“-Hero, das „JAVA & BEDROCK“-Banner, die vier Banner der Checkliste (FEATURES TESTEN,
-BUGS FINDEN, MENÜS CHECKEN, WIRTSCHAFTS SYSTEM), die EXKLUSIV-Pill, die Rakete und die
-Leuchtleiste – siehe [Eigene Grafiken](#eigene-grafiken-publicbrand).
+Vertikales Promo-Video (1080×1920, 30 fps, **37,6 s** = 34,6 s + 3 s End-Card) für TikTok / Reels /
+Shorts. Gesprochen von **dir selbst** (Aufnahme Take 2, `public/voiceover.mp3`), **ohne Untertitel**
+(`SHOW_CAPTIONS = false`), mit eigenem **Musik-Bett** (duckt unter der Stimme) und
+**Sound-Effekten** auf jedem Einschlag. Im Hintergrund läuft echtes Gameplay vom Server
+(`public/clips/`), darüber Galacticfy-Look (Lila-Stich, Sterne/Pixel-Partikel, Glas-Panels),
+**echte Screenshots** (`public/screens/`: Logo, Menü „Prefix wählen“, Chat mit `[Beta Tester]`,
+Scoreboard, Bossbar-Quest, das Discord-Banner mit `/dc`, der echte Bewerbungsweg auf dem Discord)
+und vor allem **deine eigenen Grafiken** (`public/brand/`), die genau auf den gesprochenen Wörtern
+reinknallen – siehe [Ablauf](#ablauf-sekunde-für-sekunde).
 
 Fertige Videos:
 
-- `out/galacticfy-betatester.mp4` – mit Voiceover (AAC-Ton)
-- `out/galacticfy-betatester-ohne-ton.mp4` – gleiches Video ohne Tonspur
+- `out/galacticfy-betatester.mp4` – Stimme + Musik + Sound-Effekte (zum Hochladen)
+- `out/galacticfy-betatester-ohne-musik.mp4` – gleiches Bild, nur Stimme + Sound-Effekte
+  (z. B. wenn du in TikTok/Instagram einen Trend-Sound drunterlegen willst)
+
+Beide: H.264 CRF 23, AAC 192 kbit/s, ≈ −14 LUFS, True Peak ≤ −1 dBTP.
 
 ## Setup
 
@@ -31,15 +31,33 @@ npm install
 npx remotion studio      # oder: npm run studio
 ```
 
-Öffnet die Remotion-Studio-Vorschau im Browser (Timeline, Frame-genaues Scrubbing).
+Öffnet die Remotion-Studio-Vorschau im Browser (Timeline, Frame-genaues Scrubbing). Dort gibt es
+zwei Kompositionen: `GalacticfyBeta` (mit Musik) und `GalacticfyBeta-OhneMusik`.
 
 ## Rendern
 
 ```bash
-npm run render           # -> out/galacticfy-betatester.mp4 (H.264, CRF 23, mit Voiceover)
-npm run render:ohne-ton  # -> out/galacticfy-betatester-ohne-ton.mp4 (gleiches Video, --muted)
-npm run stills           # Kontroll-Standbilder (ein paar Frames je Segment + End-Card) nach out/
+npm run render           # = bash scripts/render.sh -> beide Videos (mit + ohne Musik), Ton gemastert
+npm run render:nur-musik # nur out/galacticfy-betatester.mp4 (geht schneller)
+npm run render:ohne-ton  # out/galacticfy-betatester-ohne-ton.mp4 (gleiches Bild, ganz ohne Ton)
+npm run stills           # Kontroll-Standbilder (alle Abschnitte + End-Card) nach out/
 ```
+
+`scripts/render.sh` braucht `bash`, `npx` und `ffmpeg` (Windows: in **Git Bash** ausführen,
+`ffmpeg` mit `winget install Gyan.FFmpeg`). Warum ein Skript statt nur `remotion render`?
+Deine Stimme ist schon auf −14 LUFS / −1,9 dBTP gemastert – die Einschläge landen absichtlich
+genau auf den betonten Silben, also genau auf den lautesten Stellen der Stimme. Ohne Mastering
+würde die Summe dort kurz über 0 dBFS gehen (Clipping). Das Skript
+
+1. lässt Remotion mit 3 dB Reserve rendern (`masterGain` 0,708, verlustfreier PCM-Ton),
+2. holt die 3 dB zurück und fängt die paar Spitzen mit einem 4×-überabgetasteten Limiter ab
+   (−1,5 dBFS, 1,5 ms Vorschau, Laufzeit kompensiert -> lippensynchron),
+3. kopiert das Bild (kein zweites Encodieren) und schreibt den Ton als AAC 192 kbit/s,
+4. rendert für die Fassung ohne Musik nur den Ton neu und legt ihn unter dasselbe Bild,
+5. zeigt am Ende Lautheit + True Peak beider Dateien an.
+
+Die Stimme selbst wird dabei nicht leiser – der Limiter greift nur in den wenigen Millisekunden,
+in denen Stimme + Effekt zusammen zu laut wären (max. ≈ 1,5 dB).
 
 Kontroll-Standbilder in `out/` werden nicht eingecheckt (`.gitignore`), nur die beiden MP4s.
 
@@ -47,56 +65,162 @@ Kontroll-Standbilder in `out/` werden nicht eingecheckt (`.gitignore`), nur die 
 `/opt/pw-browsers/...`, falls vorhanden – sonst lädt Remotion selbst einen
 Headless-Browser. Pfad dort bei Bedarf anpassen.
 
+## Ablauf (Sekunde für Sekunde)
+
+Zeiten im fertigen Video; „Wort“ = wann du es in der Aufnahme sagst. Banner brauchen 6 Frames
+(0,2 s) für ihren Einschlag – sie starten deshalb ≈ 0,17 s vor dem Wort, damit der **Einschlag auf
+der betonten Silbe** landet. Die Zeiten in der Tabelle sind die Einschläge.
+
+| Zeit | Wort (Aufnahme) | Bild | Ton |
+|---|---|---|---|
+| 0,00 | – | **Hook:** großes Panel „SERVER LÄDT…“ **mitten im Bild** (Riesen-Prozentzahl, dicker Balken), schon in Frame 0 da – mit **Start-Glitch** („ERR“-Flackern, RGB-Streifen übers ganze Bild), Zoom-Punch und Wackeln; Drohne über der (aufgehellten) Spawn-Insel, Balken rast hoch | Start-Glitch, Musik blendet in 0,5 s ein |
+| 2,03 | „nicht“ 2,05 | Balken bleibt bei 73 % hängen: Glitch auf Panel + ganzem Bild, Bild wackelt | Glitch |
+| 2,37 | „fertig“ 2,37 | zweiter Glitch + **Zoom-Punch**, letzter Block blinkt danach rot | Impact (klein) |
+| 3,37 | „und genau…“ 3,39 | Schnitt (auf dem Musik-Beat): **Sturzflug** über den See auf die Brücke; das Panel rückt nach oben | – |
+| 4,13 | „deshalb“ 4,13 | Panel kippt in den Fehler-Zustand: rot, **„TESTER FEHLEN!“** | Impact (klein) |
+| 5,38 | „dich“ 5,38 | Sticker **„GESUCHT: DU!“** knallt aufs Panel + Zoom-Punch – die Drohne landet auf dem Spieler „[Beta Tester] Inhaber“ | Impact (klein) |
+| 5,73 | „Galacticfy“ 5,92 | **Raketen-Übergang** -> Hero „20 TESTER GESUCHT“ ploppt rein, **Musik-Drop** | Whoosh + Impact (+ Crash der Musik) |
+| 7,10 | „zwanzig“ 7,09 | Glow-Puls + Druckwelle auf der „20“ | Impact (klein) |
+| 7,33 | „Betatester“ 7,68 | Rakete fliegt um den Planeten, dockt an | – |
+| 8,80 | „Java“ 8,85 | JAVA-Panel wird aufgewischt | Impact (klein) |
+| 9,40 | „Bedrock“ 9,50 | „& BEDROCK“ wird aufgewischt, Glanz (steht bis zum Schnitt ≥ 0,5 s komplett da) | Impact |
+| 10,10 | „Teste“ 10,32 | Schnitt (Blitz) – **FEATURES TESTEN** knallt direkt auf „Teste“ rein (10,33) + Bossbar „Erste Schritte (3/8)“, Haken 1 | Whoosh, Impact + Pop |
+| 12,43 | „Bugs“ 12,39 | **BUGS FINDEN** + RGB-Glitch, Bossbar „verbuggt“ zweimal, Haken 2 | Impact (klein) + Glitch (+ 2. Glitch 0,5 s später) + Pop |
+| 13,57 | „Menüs“ 13,54 | **MENÜS CHECKEN** + echtes Menü „Prefix wählen“, Haken 3 | Impact + Pop |
+| 14,57 | „hilf“ 14,55 | Banner + Menü pulsieren/glänzen kurz (kein Stillstand bis zum nächsten Banner) | – |
+| 15,67 | „Wirtschaft“ 15,65 | **WIRTSCHAFTS SYSTEM** + Konto/Nova, Haken 4 | Impact + Pop |
+| 16,27 | „perfekt“ 16,29 | Glanz + Puls auf dem Banner | – |
+| 16,93 | „auszubalancieren“ 16,96 | Banner wippt wie eine Waage | – |
+| 18,63 | „Als Dankeschön“ 18,82 | **Raketen-Übergang** (diesmal von rechts unten) | Whoosh |
+| 19,10 | „Dankeschön“ 19,08 | **DEINE BELOHNUNG** (Geschenk) knallt rein, **Funken-Explosion** aus dem Geschenk | Impact |
+| 20,07 | „bekommst du“ 20,06 | Geschenk pulsiert + glänzt, zweite Funken-Explosion | – |
+| 20,70 | „ex-**klu**-siven“ 20,68 | **EXKLUSIVER PREFIX** knallt rein (Geschenk wird nach oben weggeschoben) | Impact |
+| 21,80 | „Betatester-Prefix“ 21,89 | Chat-Leiste „BETATESTER Deinname » GG!“ + echte Chatzeile „[Beta Tester] Inhaber“ | 2× Pop |
+| 24,20 | „Be-**loh**-nungen“ 24,17 | **BATTLEPASS** schiebt die Chat-Zeilen raus, knallt in die Mitte | Impact |
+| 24,67 | – | **KOSTENLOS!**-Stempel (bleibt mit BATTLEPASS + EXKLUSIVER PREFIX bis 25,4 s stehen) | Ding + Impact (klein) |
+| 25,40 | „Achtung“ 25,48 | **roter Alarm-Schnitt** + Zoom-Punch, 20 Slots ploppen auf, Zähler zählt hoch („PLÄTZE“) | Impact |
+| 26,77 | „zwanzig Plätze“ 26,75 | Zähler springt auf **20**, Leuchtring | Pop |
+| 27,60 | „wer zuerst kommt“ 27,65 | Alarm: rot blinken, „SCHNELL SEIN!“, Zähler wird zu **„NOCH FREI“** | Impact |
+| 27,90–28,60 | „kommt mahlt zuerst“ | drei Plätze werden vergeben (Spielerkopf, rot): **20 -> 19 -> 18 -> 17 NOCH FREI** | – |
+| 29,53 | „Komm jetzt“ 29,74 | Schnitt: Ingame-Banner „/dc“ + Discord-Kanal „#tickets“, Cursor fliegt rein | Whoosh |
+| 30,97 | „Discord“ 30,95 | **DISCORD BEITRETEN** (unten), danach „/dc“ markiert | Impact + Pop |
+| 31,80 | „öffne“ 31,82 | Cursor **klickt „Jetzt bewerben“** -> echtes Formular „Betatester“ ploppt auf, Kanal + „/dc“-Banner gehen dabei weg (sauberer, leicht abgedunkelter Hintergrund) | Mausklick (31,83, erster eingedrückter Frame) + Pop |
+| 32,43 | „Ticket“ 32,42 | **#TICKETS ÖFFNEN** (unten) | Impact |
+| 32,83 | – | „Absenden“ wird markiert | Pop |
+| 33,23 | „Link in der Bio“ 33,20 | **JETZT BEWERBEN KLICKEN** (deine Grafik) | Impact |
+| 33,80 | „Bio“ 33,81 | Banner pulsiert + glänzt, darunter **„↑ (Link in Bio) ↑“**, Formular geht zu -> Flug ins lila Portal | Riser (leise) startet 33,43 |
+| 34,57 | – | **Raketen-Übergang** -> End-Card (Logo, 20 TESTER GESUCHT, JAVA & BEDROCK, Prefix + Belohnungen, DISCORD discord.gg/…, „(Link in Bio)“) | Whoosh + Impact (+ Crash der Musik), Musik lauter |
+| 35,9–37,57 | – | End-Card: DISCORD-Leiste pulsiert + glänzt alle 0,8 s, Pfeile hüpfen nach oben | Musik blendet in der letzten 1 s aus |
+
 ## Texte & Timings ändern
 
 **Alles steht in `src/config.ts`:**
 
-- `SEGMENTS` – die sechs Caption-Abschnitte mit `from`/`to` in Sekunden.
-  `**Wort**` wird in Neon-Cyan hervorgehoben. `fontSize` optional pro Segment.
-- `clip` je Segment – welcher Gameplay-Clip dahinter läuft (siehe unten).
-- `BRAND_IMAGES` / `BRAND` – Logo-Sticker („BETA“) und alles zu den **eigenen Grafiken**
-  (Dateien, Größen, Positionen, Zeiten, Stichwörter) – auch die Banner-Folge in Segment 3
-  (`BRAND.checklist`) und das JAVA-&-BEDROCK-Banner (`BRAND.editions`), siehe
+- `CUE` – **alle Effekt-Zeitpunkte** (Sekunden ab Segmentstart), je mit Wort und Zeit aus
+  deiner Aufnahme im Kommentar. Die Grafiken (`BRAND`, `INTRO`, `SLOTS`, `DISCORD` …) **und** die
+  Sounds (`SFX`) lesen beide von hier – wer einen Wert ändert, verschiebt Bild + Ton zusammen.
+- `SEGMENTS` – die sechs Abschnitte mit `from`/`to` in Sekunden (= Sätze der Aufnahme),
+  `clip` (Gameplay dahinter), `cuts` (weitere Schnitte im Segment), `flash` (Blitzfarbe beim
+  Schnitt). `text` = der Satz (nur für die abgeschalteten Untertitel / als Notiz).
+- `BRAND_IMAGES` / `BRAND` – deine Grafiken (Dateien, Größen, Positionen), siehe
   [Eigene Grafiken](#eigene-grafiken-publicbrand).
-- `INTRO`, `PREFIX`, `SLOTS`, `DISCORD` – Inhalte und
-  Einsatzzeitpunkte (`chatAt`, `clickAt`, `formAt` … in Sekunden ab Segmentstart,
-  passend zum gesprochenen Wort) der animierten Visuals. `DISCORD` enthält außerdem Größe/
-  Position des Formulars (`formScale`, `formTop`), die Abdunklung dahinter (`formDim`) und
-  wann das Popup wieder zugeht (`closeAt`).
+- `INTRO` (Ladebalken-Hook), `PUNCHES` (Zoom-Punches), `PREFIX`, `SLOTS`, `DISCORD` – Inhalte der
+  animierten Visuals (Zeiten kommen aus `CUE`).
+- `USE_MUSIC` / `MUSIC` / `VOICE_SPEECH` – Musik-Bett + Ducking, `USE_SFX` / `SFX` –
+  Sound-Effekte, siehe [Ton](#ton-stimme-musik-sound-effekte).
 - `SCREENS` / `SCREEN_REGIONS` / `SCREEN_OUTLINES` – die Screenshot-Ausschnitte (siehe unten).
-- `END_CARD` (Zeilen mit Icon; die ersten beiden Zeilen – „20 TESTER GESUCHT“ und „JAVA &
-  BEDROCK“ – sind deine Grafiken aus `BRAND`) / `END_CARD_STEPS` (hervorgehobene Zeile „Discord /dc →
-  #tickets → Jetzt bewerben“) / `END_CARD_LINKS` (galacticfy.de, Discord: /dc) /
-  `END_CARD_FOOTER` („(Link in Bio)“) / `END_CARD_SECONDS` – Abschlusskarte.
-- `USE_VOICEOVER` / `VOICEOVER_FILE` / `VOICEOVER_VOLUME` – Voiceover (siehe unten).
-- `END_CARD_CLIP` / `END_CARD_CLIP_BLUR` / `END_CARD_CLIP_DIM` – weichgezeichnetes
-  Gameplay hinter der End-Card (`null` = nur Weltraum-Hintergrund).
-- `COLORS`, Schriften (`FONT_HEAVY`, `FONT_PIXEL`).
+- `END_CARD` / `END_CARD_FOOTER` („(Link in Bio)“) / `END_CARD_SECONDS` / `END_CARD_CLIP` –
+  Abschlusskarte.
+- `SHOW_CAPTIONS` – Untertitel (bewusst `false`), `COLORS`, Schriften.
 
-Die Gesamtlänge ergibt sich automatisch aus dem letzten Segment + End-Card.
+Die Gesamtlänge ergibt sich automatisch aus dem letzten Segment + End-Card und muss zur
+Tonspur passen (34,566667 + 3 s = 1127 Frames).
 
-Achtung Voiceover: Wer eine Caption ändert, muss auch das Voiceover neu aufnehmen bzw.
-erzeugen (siehe [Voiceover](#voiceover)) – oder es mit `USE_VOICEOVER = false` abschalten.
-Wer die Zeitfenster (`from`/`to`) ändert, zieht sie auch oben in
-`scripts/import-voiceover.sh` (`SEG_FROM`/`SEG_TO`) nach.
+Hinweis: Statt Emojis werden eigene Pixel-Icons (`src/PixelIcon.tsx`) genutzt, weil der
+Headless-Browser keine Emoji-Schrift hat.
 
-Hinweis: Statt Emojis werden eigene Pixel-Icons (`src/PixelIcon.tsx`) genutzt,
-weil der Headless-Browser keine Emoji-Schrift hat.
+## Ton: Stimme, Musik, Sound-Effekte
+
+### Stimme (`public/voiceover.mp3`)
+
+Deine **zweite Aufnahme** (ein ganzer Take, Rohdatei unverändert in
+`public/voiceover-original/leon-aufnahme-2.mp3`), geschnitten und gemastert mit
+
+```bash
+bash scripts/make-voice-take2.sh        # -> public/voiceover.mp3 (37,57 s, 48 kHz, −14 LUFS, −1,9 dBTP)
+```
+
+Das Skript kürzt die langen Pausen zwischen den Sätzen (nur in Stille, 15-ms-Crossfades, Atmer in
+den Pausen fallen mit raus), repariert das abgeschnittene „dich“, schaltet einen Mundklick zwischen
+„exklusiven“ und „Betatester-Prefix“ stumm (`CLICKS`), filtert Brummen, mindert Rauschen sanft,
+entschärft S-Laute, komprimiert leicht und bringt alles auf −14 LUFS. Die
+Wort-Zeiten im Kommentar von `CUE` stammen aus dieser Datei. `USE_VOICEOVER = false` = ohne
+Stimme, `VOICEOVER_VOLUME` = Lautstärke.
+
+### Musik (`public/music/bed.mp3`)
+
+Selbst erzeugtes, lizenzfreies EDM-Bett (C-Moll, ≈ 127 BPM, keine Samples), mit dem **Drop genau
+auf dem Schnitt zu „Galacticfy sucht…“** (5,733 s) und dem **Crash genau auf der End-Card**
+(34,567 s); dazwischen läuft es auf dem Beat-Raster, 2,4 s vor der End-Card kommt ein Breakdown
+mit eigenem Riser. Neu erzeugen (≈ 25 s), z. B. nach dem Umtimen:
+
+```bash
+python3 -I scripts/make-music.py --drop <SEGMENTS[1].from> --end <letztes SEGMENTS.to>
+python3 -I scripts/make-music.py --drop 5.733333 --end 34.566667   # aktueller Stand
+```
+
+Lautstärke (`MUSIC` in `src/config.ts`): 0,36 in Sprechpausen, **0,2 während du sprichst**
+(≈ 15 dB unter der Stimme – auch am Handy-Lautsprecher noch hörbar; Ducking mit 7-Frame-Rampen; wo
+gesprochen wird, steht in `VOICE_SPEECH` – mit ffmpeg `silencedetect` aus der Aufnahme gemessen),
+0,75 auf der End-Card (damit der Schluss nicht deutlich leiser ist als der Rest), 0,5 s Einblenden am
+Anfang, 1 s Ausblenden am Ende.
+
+**Musik ausschalten:**
+
+- in `src/config.ts` `USE_MUSIC = false` setzen und neu rendern, **oder**
+- einfach die zweite Datei nehmen: `out/galacticfy-betatester-ohne-musik.mp4` (wird bei
+  `npm run render` immer mit erzeugt; im Studio: Komposition `GalacticfyBeta-OhneMusik`).
+
+Lauter/leiser: `MUSIC.volume` / `MUSIC.ducked` / `MUSIC.endCard` (0–1).
+
+### Sound-Effekte (`public/sfx/`)
+
+Ebenfalls selbst synthetisiert (`python3 -I scripts/make-sfx.py`, ohne Samples):
+
+| Datei | Klang | Wo |
+|---|---|---|
+| `whoosh.wav` | Rauschen mit Sweep, links -> rechts (Peak nach 0,26 s) | Raketen-Übergänge + Schnitte 2->3, 5->6 (Peak genau auf dem Schnitt) |
+| `impact.wav` | Sub-Thump + Crack | große Banner-Einschläge (u. a. DEINE BELOHNUNG, BATTLEPASS), Hero, „Achtung“-Schnitt, Alarm, End-Card |
+| `impact-small.wav` | leichter Thump | „fertig“, TESTER FEHLEN!, Sticker „GESUCHT: DU!“, Puls auf der „20“, JAVA, BUGS FINDEN, KOSTENLOS |
+| `glitch.wav` | digitales Stottern | Start-Glitch (Frame 0), „nicht“, BUGS FINDEN, Bossbar-Glitch |
+| `pop.wav` | UI-Pop | Häkchen, Chat-Zeilen, Zähler 20, „/dc“, Formular, „Absenden“ |
+| `ding.wav` | Münz-/Glocken-Ding | KOSTENLOS! |
+| `riser.wav` | Build-up (endet bei 1,13 s) | leise (0,22) in die End-Card – die Musik hat dort schon einen eigenen Riser |
+| `click.wav` | Mausklick | Klick auf „Jetzt bewerben“ (`DISCORD.clickSound`, `clickVolume`) |
+
+Alle Einsätze stehen als Liste `SFX` in `src/config.ts`: `{label, file, seg, at, volume}` –
+`seg` = Segment (`'intro'`, `'testers'`, … oder `'endCard'`), `at` = Sekunden ab dessen Start
+(negativ = vor dem Schnitt). Einschläge stehen als `CUE.… + SLAM` drin (= genau der
+Einschlag-Frame des Banners) – wer ein `CUE` verschiebt, verschiebt den Sound mit. Lautstärken
+0,28–0,65, damit die Stimme immer vorne bleibt. Einen Sound entfernen = Zeile löschen; alle aus:
+`USE_SFX = false`.
 
 ## Gameplay-Clips austauschen
 
-Die Aufnahmen liegen in `public/clips/` (16:9, z. B. 1920×1080, 30 fps, H.264, ohne Ton).
-Sie werden automatisch mittig auf 9:16 zugeschnitten. Aktuelle Belegung:
+Die Aufnahmen liegen in `public/clips/` (16:9, 1920×1080, 30 fps, H.264, ohne Ton). Sie werden
+automatisch mittig auf 9:16 zugeschnitten. Jeder Moment der Clips kommt **nur einmal** vor.
+Aktuelle Belegung (Tempo = Clip-Sekunden / Video-Sekunden; < 0,8× nur bei Drohnen-/Kamerafahrten):
 
-| Segment | Zeit | Clip | Ausschnitt im Clip |
-|---|---|---|---|
-| 1 Intro („nicht fertig“) | 0–3 s | `spawn-insel.mp4` | 0,0–3,0 s (Drohnenflug runter zum Steg) |
-| 2 20 Betatester | 3–6 s | `portal-plaza.mp4` | 0,0–3,0 s (Anflug aufs Portal) |
-| 3 Checkliste | 6–11 s | `portal-plaza.mp4` | 6,0–12,5 s (Kreisflug, 1,3× schneller) |
-| 4 Prefix / Chat | 11–15 s | `see-bruecke.mp4` | 0,0–3,7 s (Haus → Bar, leicht verlangsamt) |
-| 5 20 Plätze | 15–19 s | `see-bruecke.mp4` | 4,4–8,4 s (Brücke mit Spieler) |
-| 6 Discord | 19–22 s | `portal-plaza.mp4` | 14,2–17,2 s (Zoom ins Portal) |
-| End-Card | 22–25 s | `see-bruecke.mp4` | 10,9–12,3 s (weichgezeichnet) |
+| Abschnitt | Zeit | Clip | Ausschnitt im Clip | Tempo |
+|---|---|---|---|---|
+| 1 Intro | 0–3,37 s | `spawn-insel.mp4` | 0,0–3,15 s (Drohnenflug runter zum Steg mit Spielern, aufgehellt) | 0,94× |
+| 1 Intro ab „und genau deshalb“ | 3,37–5,73 s | `see-bruecke-dive.mp4` | 0,03–1,67 s = `see-bruecke.mp4` 12,37 -> 10,70 s **rückwärts**: Sturzflug über den See auf die Brücke, landet bei „dich“ auf dem Spieler „[Beta Tester] Inhaber“ | 0,69× |
+| 2 20 Betatester | 5,73–10,1 s | `portal-plaza.mp4` | 0,0–4,4 s (Anflug aufs Portal) | 1,01× |
+| 3 Checkliste | 10,1–18,63 s | `portal-plaza.mp4` | 4,4–13,0 s (raus aus dem Portal, Kreisflug) | 1,01× |
+| 4 Belohnungen | 18,63–25,4 s | `see-bruecke.mp4` | 0,0–5,3 s (Haus -> Bar -> raus zum See, aufgehellt) | 0,78× |
+| 5 20 Plätze | 25,4–29,53 s | `see-bruecke.mp4` | 5,3–8,55 s (Drohne über die Brücke zum Spieler) | 0,79× |
+| 6 Discord | 29,53–34,57 s | `portal-plaza.mp4` | 13,0–17,2 s (Zoom ins lila Portal) | 0,83× |
+| End-Card | 34,57–37,57 s | `see-bruecke.mp4` | 8,6–10,45 s (Drohne übers Wasser, weichgezeichnet) | 0,62× |
 
 So tauschst du einen Clip:
 
@@ -113,22 +237,29 @@ So tauschst du einen Clip:
    - `zoom` – 1 = Clip-Höhe füllt genau das Bild. `[1, 1.3]` = langsamer Zoom rein.
    - `focusX` / `focusY` – welcher Punkt des Clips (in %, 50 = Mitte) in die
      Bildmitte soll. `focusX: 30` zeigt eher den linken Teil des 16:9-Bildes;
-     `focusY` wirkt nur bei `zoom > 1` (größer = Inhalt rutscht nach oben,
-     z. B. damit Spieler nicht hinter der Caption verschwinden).
+     `focusY` wirkt nur bei `zoom > 1`.
    - Statt einer Zahl geht immer auch `[Start, Ende]` für eine Kamerafahrt.
+   - Ein weiterer Schnitt innerhalb eines Segments: `cuts: [{at: 2.0, clip: {…}}]` (`at` =
+     Sekunden ab Segmentstart; harter Schnitt mit Zoom-Punch + kleinem Blitz).
 3. Passende Stellen findest du am schnellsten im Studio (`npm run studio`) oder mit
    `ffmpeg -i public/clips/clip.mp4 -vf fps=2,scale=480:-1,tile=6x3 sheet.jpg`.
 
-Look/Lesbarkeit (Lila-Stich, dunkle Verläufe hinter Logo und Captions) steht in
-`FootageGrade` in `src/Footage.tsx`.
+`see-bruecke-dive.mp4` ist kein neues Material, sondern ein rückwärts laufender Ausschnitt aus
+`see-bruecke.mp4` (im Original zieht die Drohne vom Spieler weg). Neu erzeugen:
+`ffmpeg -ss 10.7 -i public/clips/see-bruecke.mp4 -t 1.7 -an -vf "reverse,setpts=PTS-STARTPTS" -r 30 -c:v libx264 -preset slow -crf 18 -g 30 -pix_fmt yuv420p -movflags +faststart public/clips/see-bruecke-dive.mp4`.
 
-Layout: Captions sitzen unten-mittig (y ≈ 1110–1540), die untersten ~380 px und die
-rechten ~140 px bleiben frei für die TikTok/Reels-Oberfläche (Beschreibung, Like-Leiste).
-Die Werte stehen oben in `src/GalacticfyBeta.tsx` (`CAPTION_*`, `VISUAL_*`). Einzige
-Ausnahme: Das Discord-Formular in Segment 6 ist ein Popup – es liegt (wie in Discord) mittig
-über dem abgedunkelten Bild inkl. Logo, reicht von y ≈ 158 bis ≈ 1085 (x ≈ 257–823) und lässt
-nur die Caption frei. Es geht kurz vor der End-Card wieder zu (`DISCORD.closeAt`), damit der
-Flug ins lila Portal vor dem Blitz noch zu sehen ist.
+Dunkle Aufnahmen lassen sich je Clip aufhellen: `brightness: 1.2` im `clip`-Eintrag.
+Look/Lesbarkeit (Lila-Stich, dunkle Verläufe hinter Logo und unten) steht in
+`FootageGrade` in `src/Footage.tsx` – ohne Untertitel wird die untere Bildhälfte nur leicht
+abgedunkelt (kräftiger erst ganz unten, wo TikTok/Reels die Beschreibung zeigt).
+
+Layout: Logo oben ab y = 140, die Visuals darunter (y ≈ 312–1085; das Lade-Panel im Hook steht
+anfangs mittig bei y ≈ 730), im Discord-Teil die großen Banner unten (Mitte y = 1300, wo früher die
+Untertitel standen) und darunter ab „Bio“ „(Link in Bio)“ (y ≈ 1462). Die untersten ~380 px und die
+rechten ~140 px bleiben frei für die TikTok/Reels-Oberfläche (Beschreibung, Like-Leiste). Einzige
+Ausnahme: Das Discord-Formular in Segment 6 ist ein Popup – es liegt (wie in Discord) mittig über
+dem abgedunkelten Bild inkl. Logo, reicht von y ≈ 158 bis ≈ 1085 und geht bei „Bio“ wieder zu,
+damit der Flug ins lila Portal vor der End-Card noch zu sehen ist.
 
 ## Echte Screenshots (`public/screens/`)
 
@@ -143,10 +274,10 @@ Pixel-Art und werden weich skaliert (`smooth: true` in `SCREENS`).
 |---|---|---|
 | `logo.png` | GALACTICFY-Banner aus dem Scoreboard | Header (ganzes Video) + End-Card |
 | `bossbar.png` | Bossbar „Erste Schritte (3/8) » …“ + Fortschrittsbalken | Segment 3 klein unter dem Banner FEATURES TESTEN (+ Glitch, solange BUGS FINDEN steht) |
-| `prefix-menu-chest.png` | Menü „Prefix wählen“: Titel + die sechs Truhen-Reihen + unterer GUI-Rahmen (aus `prefix-menu.png` geschnitten, ohne das leere Spieler-Inventar). Der kaum lesbare Original-Titel (Cyan auf Grau) wird im Video von einem dunklen „Prefix wählen“-Schild überdeckt (`PREFIX.menuTitle`) | Segment 3 klein unter dem Banner MENÜS CHECKEN + Segment 4 (klein, als Kontext) |
+| `prefix-menu-chest.png` | Menü „Prefix wählen“: Titel + die sechs Truhen-Reihen + unterer GUI-Rahmen (aus `prefix-menu.png` geschnitten, ohne das leere Spieler-Inventar). Der kaum lesbare Original-Titel (Cyan auf Grau) wird im Video von einem dunklen „Prefix wählen“-Schild überdeckt (`PREFIX.menuTitle`) | Segment 3 klein unter dem Banner MENÜS CHECKEN (in Segment 4 nicht mehr – wäre eine Wiederholung; wieder einschalten: `BRAND.rewards.menu = {scale: 0.62, centerY: 520}`) |
 | `scoreboard-economy.png` | „Konto › 24.644“ / „Nova › 250“ | Segment 3 klein unter dem Banner WIRTSCHAFTS SYSTEM |
-| `chat-betatester.png` | Chat „[Beta Tester] Inhaber ✦ Leon185“ | Segment 4 (Prefix) – groß (1,75×), nur „[Beta Tester] Inhaber“ (`SCREEN_REGIONS.chatRankLine`) |
-| `scoreboard-online.png` | „Online › 1/20“ | Segment 5 (20 Plätze) – markiert wird nur „/20“ (Server-Maximum), die Slots darunter bleiben „frei“ |
+| `chat-betatester.png` | Chat „[Beta Tester] Inhaber ✦ Leon185“ | Segment 4 (Belohnungen) – unter der Chat-Leiste (1,4×), nur „[Beta Tester] Inhaber“ (`SCREEN_REGIONS.chatRankLine`) |
+| `scoreboard-online.png` | „Online › 1/20“ | Reserve: aus (`SLOTS.showOnline = false`), weil „1/20“ neben dem Platz-Zähler wie „nur noch 19 frei“ wirkte |
 | `discord-banner.png` | „DISCORD /dc \| TEAMSPEAK /ts“ | Segment 6 (Discord) – über dem Discord-Fenster, „/dc“ wird markiert; auf den Banner-Umriss zugeschnitten (`SCREEN_OUTLINES.discordBanner`), damit keine Spielwelt-Ecken stehen bleiben |
 | `discord-channel.png` | Discord-Kanal-Kopfzeile „# 🎫 \| tickets“ | Segment 6 – Kopfzeile des Discord-Fensters |
 | `discord-apply.png` | Embed-Abschnitt „Betatester werden“ + Text + grüner Button „Jetzt bewerben“ | Segment 6 – im Discord-Fenster, nur Überschrift + Text (`SCREEN_REGIONS.discordApplyText`, 2,08×) |
@@ -166,260 +297,126 @@ in `SCREEN_OUTLINES` – beides muss bei einem neuen Bild ggf. nachgezogen werde
 
 ## Eigene Grafiken (`public/brand/`)
 
-Deine Marken-Grafiken liegen als **transparente PNGs** in `public/brand/` (Originalauflösung;
-Grafiken mit schwarzem Hintergrund wurden freigestellt, die mit Transparenz nur auf den
-sichtbaren Inhalt zugeschnitten). Sie sind kein Pixel-Art und werden immer **weich skaliert**
-(nie `pixelated`). Eingebunden über `src/Brand.tsx` (Bild, Glow-Puls, Glanz, Einschlag/„Slam“,
+Deine Marken-Grafiken liegen als **transparente PNGs** in `public/brand/` (Originalauflösung).
+Sie sind kein Pixel-Art und werden immer **weich skaliert** (nie `pixelated`), nie beschnitten oder
+übermalt. Eingebunden über `src/Brand.tsx` (Bild, Glow-Puls, Glanz, Einschlag/„Slam“,
 Bild-Wackeln) und `src/Visuals.tsx`; Dateien + Größen stehen in `BRAND_IMAGES`, Größen,
-Positionen, Zeiten und Stichwörter im Block `BRAND` in `src/config.ts`. Die Grafiken selbst
-werden nie beschnitten oder übermalt.
+Positionen und Zeiten im Block `BRAND` in `src/config.ts` (die Zeiten selbst kommen aus `CUE`).
 
 | Datei | Inhalt | Wo im Video (Zeiten im fertigen Video) |
 |---|---|---|
-| `hero-20-tester.png` | Planet + „20“ + „TESTER GESUCHT“ | Segment 2 (3–6 s), groß zwischen Logo und Caption (700 px breit): ploppt bei 3,0 s mit Federung + leichter Drehung rein, **Glow-Puls + Glanz auf der „20“ beim Wort „20“** (3,4 s), schwebt danach sanft |
-| `java-bedrock.png` | Doppel-Banner „[Monitor] JAVA & BEDROCK [Grasblock]“ | Segment 2 direkt unter dem Hero, über der Caption (800 px sichtbar breit, rechter Rand bei x ≈ 940, Oberkante 976 px): per Wisch von links mit leuchtender Kante aufgedeckt – **beim Wort „Java“** (4,2–4,4 s) das linke JAVA-Panel (die Kante bleibt dort als schmale Lichtlinie stehen), **beim Wort „Bedrock“** (4,6–4,8 s) „&“ + BEDROCK-Panel; Glanz bei 5,0 s. End-Card: zweite Zeile (800 px = Zeilenbreite, statt der alten Text-Zeile „Java & Bedrock“), gleitet bei 22,37 s rein, Glanz bei ≈ 23,1 s |
-| `features-testen.png` | Leiste „✦ FEATURES TESTEN 02“ | Segment 3 (6–11 s), Banner 1: knallt **beim Wort „Systeme“** groß rein (Start 6,47 s, Einschlag 6,67 s mit Blitz, Stauchen, Wackeln, Glanz + Glow-Puls auf der „02“), 860 px sichtbar breit, Mitte bei y = 520. Darunter die echte Bossbar „Erste Schritte (3/8)“ |
-| `bugs-finden.png` | Leiste „[Käfer] BUGS FINDEN 01“ | Segment 3, Banner 2: **beim Wort „Bugs“** (Start 7,2 s, Einschlag 7,4 s, kurzer RGB-Glitch auf dem Banner, Puls auf der „01“; steht bis 8,0 s), 860 px sichtbar breit; FEATURES TESTEN wird dabei kleiner nach oben weggeschoben. Die Bossbar darunter „verbuggt“ zweimal kurz |
-| `menues-checken.png` | Klemmbrett + „MENÜS CHECKEN“ | Segment 3, Banner 3: **beim Wort „Menüs“** (Start 8,0 s, Einschlag 8,2 s), 850 px sichtbar breit; darunter das echte Menü „Prefix wählen“ |
-| `wirtschaftssystem.png` | Geldsack + Münzen + „WIRTSCHAFTS SYSTEM“ | Segment 3, Banner 4: **beim Wort „Wirtschaft“** (Start 9,2 s, Einschlag 9,4 s), 850 px sichtbar breit, bleibt bis zum Segmentende; darunter die echten Scoreboard-Zeilen „Konto › 24.644“ / „Nova › 250“ |
-| `rocket.png` | Cartoon-Rakete | **Übergänge** 1→2 (2,8–3,2 s) und 6→End-Card (21,8–22,2 s): schießt in 12 Frames diagonal durchs Bild (über der Caption), mit Leuchtspur + Nachzieh-Kopien, das Bild wackelt kurz. In Segment 2 fliegt sie einmal um den Planeten (3,75–5,05 s, hinten kleiner/vorne größer) und dockt rechts oben am Hero an. Auf der End-Card klein links neben dem Logo |
-| `exklusiv-pill.png` | Neon-Pill „★ EXKLUSIV“ | Segment 4 (11–15 s): knallt **beim Wort „exklusiven“** (12,2 s) von groß auf normal direkt über die echte Chatzeile „[Beta Tester] Inhaber“ (linksbündig mit der Zeile, über „[Beta Tester]“), Einschlag bei 12,4 s mit Blitz, Wackeln, Druckwelle und Glanz; die Chatzeile schiebt sich bei „Betatester-Prefix“ (12,45 s) darunter |
-| `bar-20-tester.png` | Leuchtleiste „🚀 20 TESTER GESUCHT“ | End-Card (22–25 s): erste Zeile (statt der alten Text-Zeile), so breit wie die anderen Zeilen, gleitet bei 22,2 s rein, Glanz bei ≈ 22,9 s |
+| `rocket.png` | Cartoon-Rakete | **Übergänge** Intro -> 2 (5,73 s), Checkliste -> Belohnungen (18,63 s, von rechts unten) und -> End-Card (34,57 s): schießt in 12 Frames diagonal durchs Bild, mit Leuchtspur, das Bild wackelt. In Segment 2 fliegt sie um den Planeten (7,33–8,63 s) und dockt am Hero an. Auf der End-Card klein neben dem Logo |
+| `hero-20-tester.png` | Planet + „20“ + „TESTER GESUCHT“ | Segment 2: ploppt auf dem Musik-Drop rein (5,73 s), **Glow-Puls + Druckwelle auf der „20“ genau auf „zwanzig“** (7,10 s), schwebt danach |
+| `java-bedrock.png` | „JAVA & BEDROCK“ | Segment 2 unter dem Hero: JAVA-Panel per Wisch **auf „Java“** (8,80 s), „& BEDROCK“ **auf „Bedrock“** (9,43 s), dann Glanz. End-Card: zweite Zeile |
+| `features-testen.png` | „✦ FEATURES TESTEN 02“ | Segment 3, Einschlag **auf „Teste“** (10,33 s, direkt nach dem Schnitt), darunter die Bossbar |
+| `bugs-finden.png` | „BUGS FINDEN 01“ | Einschlag **auf „Bugs“** (12,43 s) mit RGB-Glitch |
+| `menues-checken.png` | „MENÜS CHECKEN“ | Einschlag **auf „Menüs“** (13,57 s), darunter das echte Menü; kleiner Puls + Glanz auf „hilf“ (14,57 s) |
+| `wirtschaftssystem.png` | „WIRTSCHAFTS SYSTEM“ | Einschlag **auf „Wirtschaft“** (15,67 s), Glanz auf „perfekt“ (16,27 s), wippt wie eine Waage auf „auszubalancieren“ (16,93 s) |
+| `exklusiver-prefix.png` | „EXKLUSIVER PREFIX“ | Segment 4, Einschlag **auf „ex-KLU-siven“** (20,70 s) |
+| `betatester-chat.png` | Chat-Leiste „BETATESTER Deinname » GG!“ | **auf „Betatester-Prefix“** (21,80 s), darunter die echte Chatzeile |
+| `deine-belohnung.png` | „DEINE BELOHNUNG“ | Segment 4, Einschlag **auf „Dankeschön“** (19,10 s) mit Funken-Explosion aus dem Geschenk, pulsiert nochmal auf „bekommst du“ (20,07 s), wird von EXKLUSIVER PREFIX weggeschoben |
+| `battlepass.png` | „BATTLEPASS · PREMIUM“ | Einschlag **auf „Be-LOH-nungen“** (24,20 s) in der Mitte (schiebt die Chat-Zeilen raus), bleibt bis zum Schnitt (1,2 s) |
+| `kostenlos.png` | Stempel „KOSTENLOS!“ | Einschlag 24,67 s auf dem Battlepass (+ Ding), ≈ 0,7 s lesbar |
+| `discord-beitreten.png` | „DISCORD BEITRETEN »“ | Segment 6 unten, Einschlag **auf „Discord“** (30,97 s) |
+| `tickets-oeffnen.png` | „#TICKETS ÖFFNEN »“ | Einschlag **auf „Ticket“** (32,43 s) |
+| `jetzt-bewerben-klicken.png` | Klemmbrett + „JETZT BEWERBEN KLICKEN »“ | Einschlag **auf „Link in der Bio“** (33,23 s), pulsiert + glänzt nochmal auf „Bio“ (33,80 s) – darunter erscheint dann „↑ (Link in Bio) ↑“ –, bleibt bis zur End-Card (ersetzt die alte Leiste `jetzt-bewerben.png`) |
+| `bar-20-tester.png` | Leiste „🚀 20 TESTER GESUCHT“ | End-Card, erste Zeile |
+| `discord-link.png` | „DISCORD discord.gg/ZGAxYfG5yX“ | End-Card, über „(Link in Bio)“; pulsiert + glänzt alle 0,8 s |
+| `jetzt-bewerben-discord.png` | großes Discord-Logo + „JETZT BEWERBEN“ | **Reserve** (in `BRAND_IMAGES` eingetragen): auf der End-Card wäre es zu voll (sie würde in die TikTok-Leiste unten rutschen), und im Discord-Teil stünde „JETZT BEWERBEN“ sonst doppelt. Austauschen: in `BRAND.cta.banners` `'jetztBewerbenKlicken'` durch `'jetztBewerbenDiscord'` ersetzen (Breite ≈ 700) |
+| `jetzt-bewerben.png`, `exklusiv-pill.png` | ältere Leisten | Reserve (nicht im Video) |
 
-**Segment 3 (Banner-Folge):** Es steht immer nur **ein** großer Banner in der Banner-Fläche
-(zwischen Logo und Caption). Jeder neue knallt von 1,7× auf 1× rein, der vorige schrumpft dabei
-nach oben weg (≈ 0,27 s). Unter dem Banner sitzt der passende echte Screenshot (`screenScale` 1);
-er blendet aus, während der nächste Banner reinknallt, und der neue kommt erst mit dessen
-Einschlag (keine Überblendung zweier Screenshots). Ganz unten über der Caption vier kleine
-Kästchen, die sich beim Einschlag des jeweiligen Banners abhaken (Fortschritt 1–4, ohne Text);
-das nächste offene Kästchen glimmt schon vorher. Bei 860/850 px Breite ragen die Banner nur mit
-ihrer Pixel-Deko bis x ≈ 970 in den rechten Streifen; Texte und Nummern-Boxen bleiben bei x ≤ 940.
-Die Nummern-Boxen in deinen Grafiken lauten „02“ (FEATURES TESTEN) und „01“ (BUGS FINDEN) –
-gesprochen wird aber erst „Systeme“, dann „Bugs“. Die Grafiken bleiben unverändert; im Video wirkt das wie ein **Countdown 02 → 01** (je ein Glow-Puls auf der
-Nummer) vor den beiden großen Bannern. Wer lieber 01 → 02 hätte, exportiert die beiden Leisten mit
-getauschten Nummern neu (gleiche Dateinamen) – sonst ist nichts zu ändern.
+**Segment 3 (Banner-Folge):** Es steht immer nur **ein** großer Banner in der Banner-Fläche. Jeder
+neue knallt von 1,7× auf 1× rein, der vorige schrumpft nach oben weg. Darunter der passende echte
+Screenshot und vier kleine Kästchen, die sich beim jeweiligen Einschlag abhaken. Jeder Banner
+steht ≥ 0,9 s ruhig da. Die Nummern-Boxen in deinen Grafiken lauten „02“ (FEATURES TESTEN) und
+„01“ (BUGS FINDEN) – im Video wirkt das wie ein Countdown 02 -> 01.
+
+**Segment 4 (Belohnungen):** erst DEINE BELOHNUNG (das „Dankeschön“, mit Funken aus dem Geschenk),
+dann EXKLUSIVER PREFIX oben; in der Mitte die Chat-Leiste + echte Chatzeile, die bei BATTLEPASS
+(„weitere Belohnungen“) rausfliegen; KOSTENLOS! stempelt auf den Battlepass. Das echte Menü
+„Prefix wählen“ steht hier nicht mehr (kommt schon in Segment 3 vor). Damit am Ende alles ≥ 0,7 s
+lesbar steht, liegt der Schnitt zu Segment 5 nicht vor „Aber“, sondern genau vor „**Achtung**“
+(25,40 s) – der rote Alarm-Schnitt knallt dadurch direkt auf das Wort.
+
+**Segment 5 (20 Plätze):** Der Zähler landet genau auf „zwanzig Plätze“ bei 20; ab „wer zuerst
+kommt“ heißt er „NOCH FREI“ und zählt auf 17 runter, drei Slots zeigen einen Spielerkopf (vergeben).
+Zeiten: `CUE.slots.taken`, welche Slots: `SLOTS.takenSlots`.
+
+**Hook (Segment 1):** Texte und Zeiten in `INTRO` (`label`, `errorLabel` „TESTER FEHLEN!“,
+`sticker` „GESUCHT: DU!“, `centerY`, `dock`) bzw. `CUE.intro`.
 
 **Grafik austauschen:**
 
-1. Neues PNG **mit Transparenz** (kein schwarzer Hintergrund) nach `public/brand/` legen –
-   am einfachsten unter dem alten Dateinamen.
+1. Neues PNG **mit Transparenz** nach `public/brand/` legen – am einfachsten unter dem alten
+   Dateinamen.
 2. In `src/config.ts` unter `BRAND_IMAGES` `width`/`height` (Pixel) anpassen und `box` = der
-   sichtbare Inhalt im PNG (ohne transparenten Rand/weichen Schein; im Zweifel
-   `{x: 0, y: 0, w: width, h: height}`). Danach wird ausgerichtet – z. B. ist die Leiste auf
-   der End-Card genau so breit wie die Zeilen darunter.
-3. Bei einer neuen Rakete `BRAND.rocketHeading` setzen: Flugrichtung im Bild in Grad
-   (0 = nach rechts, −90 = nach oben; die jetzige zeigt mit −48° nach rechts oben).
-4. Bei einem neuen Hero `BRAND.hero.pulseCenter`/`pulseSize` (wo die „20“ im PNG sitzt) und
-   ggf. `BRAND.orbit.dock` (Andockpunkt der Rakete) prüfen.
-5. Bei einem neuen JAVA-&-BEDROCK-Banner in `BRAND.editions.reveal` die x-Position (PNG-Pixel)
-   prüfen, bis zu der beim Wort „Java“ aufgedeckt wird (jetzt 862 = kurz vor dem „&“), bei
-   neuen Checklisten-Leisten in `BRAND.checklist.banners[].pulse` die Mitte der Nummern-Box.
+   sichtbare Inhalt im PNG (im Zweifel `{x: 0, y: 0, w: width, h: height}`).
+3. Bei einer neuen Rakete `BRAND.rocketHeading` setzen (Flugrichtung im Bild in Grad).
+4. Bei einem neuen Hero `BRAND.hero.pulseCenter`/`pulseSize` und ggf. `BRAND.orbit.dock` prüfen,
+   bei einem neuen JAVA-&-BEDROCK-Banner `BRAND.editions.reveal[0].toX`, bei neuen
+   Checklisten-Leisten `BRAND.checklist.banners[].pulse`.
 
-**Größe/Position/Timing ändern** – alles in `BRAND`:
+**Größe/Position ändern** – alles in `BRAND`: `hero`, `editions`, `orbit`, `checklist`
+(`centerY`, `fromScale`, `slamFrames`, `exitFrames`, `screenGap`, `progressTop`, `bumpAt`,
+`balance`), `rewards` (`banners`, `battlepass`, `kostenlos`, `chatBar`, `realChat`, `menu`),
+`cta` (Banner unten im Discord-Teil, `bumpAt`), `wipes` (Raketen-Übergänge: `cut` = an welchem
+Schnitt, `from`/`to`, `size`), `wipeShake`/`slamShake`/`bannerShake`, `endCard`.
 
-- `hero` – Breite, Oberkante, Einsatz, `pulse` (Stichwort für den Glow-Puls), `float`. Bei
-  einer anderen Breite `orbit` (Mittelpunkt, Radien, Andockpunkt) mitskalieren.
-- `editions` – das JAVA-&-BEDROCK-Banner in Segment 2: sichtbare Breite, Oberkante, `reveal`
-  (je Teil: bis wohin aufgedeckt wird + Stichwort), `wipeFrames`, `shineDelay`.
-- `checklist` – die Banner-Folge in Segment 3: je Banner `image` (Name aus `BRAND_IMAGES`),
-  sichtbare Breite, `cue` (Stichwort + `offset`), `screen` (echter Screenshot darunter:
-  `'quest'`, `'glitch'`, `'menu'`, `'economy'`), `pulse` (Nummern-Box); außerdem `centerY`
-  (Mitte der Banner-Fläche), Einschlag (`fromScale`, `slamFrames`, `shake`), `exitFrames`,
-  `screenGap`/`screenScale` (Screenshot unter dem Banner) und `progressTop`/`progressSize`
-  (Fortschritts-Kästchen, `null` = keine). `bannerShake` = Bild-Wackeln je Einschlag.
-- `orbit` – Start, Dauer, Größe, Ellipse (`center`/`radius`/`tilt`) und Andockpunkt.
-- `exklusiv` – `cue` (Stichwort), Breite, `anchorX` (0,37 = linksbündig mit der Chatzeile, über
-  „[Beta Tester]“; 0,5 = mittig über der Chatzeile), `gap`, Schräglage, Einschlag (`fromScale`, `slamFrames`, `shake`).
-- `wipes` – die Raketen-Übergänge: `cut` = an welchem Schnitt (`1` = Intro → Segment 2,
-  `2` = Segment 2 → 3, … `'end'` = zur End-Card), `frames` (≤ 12), `from`/`to` (Bild-px),
-  `size`; `wipeShake`/`slamShake` = Wackel-Stärke. Einen Übergang löschen = Zeile entfernen,
-  einen weiteren Schnitt = Zeile kopieren und `cut` ändern.
-- `endCard` – Breite der Leiste, Glanz-Zeitpunkt, `editionsWidth` (JAVA-&-BEDROCK-Banner als
-  zweite Zeile; `null` = keins, dann ggf. die Text-Zeile in `END_CARD` wieder einkommentieren),
-  `editionsShineAt`, kleine Rakete (`rocket: null` = keine).
+**Zeiten (`cue`):** stehen bei allen Effekten als feste Zeit `{at: CUE.…}` (Sekunden ab
+Segmentstart) und kommen aus dem Block `CUE`. Alternativ geht weiterhin ein Wort der
+(abgeschalteten) Caption: `{word: 'exklusiven', offset: 0.2}`.
 
-**Stichwörter (`cue`):** Effekte wie die EXKLUSIV-Pill, der „20“-Puls, das JAVA-&-BEDROCK-Banner
-oder die Banner in Segment 3 warten auf ein Wort der Caption (`{word: 'exklusiven'}`) und kommen
-genau dann, wenn dieses Wort in der Caption reinploppt (+ `offset`). Ändern sich Caption oder
-Timing, wandern sie automatisch mit.
-Achtung: Die Caption zeigt jeden Satz in den ersten ~60 % seines Zeitfensters – wer den Satz
-übers ganze Fenster spricht, sagt die Wörter etwas später. In der aktuellen TTS-Spur kommen
-„20“, „Java“ und „Bedrock“ (Segment 2) ≈ 0,6–1 s nach ihrem Effekt, „exklusiven“ (Segment 4)
-≈ 0,2 s danach. Die vier Banner in Segment 3 haben deshalb schon einen `offset` (0,05 / 0,4 /
-0,6 / 0,8 s), damit ihr Einschlag auf dem gesprochenen Wort der TTS-Spur liegt (≈ 6,7 / 7,4 /
-8,2 / 9,4 s; gesprochen ≈ 6,8 / 7,5 / 8,1 / 9,4 s) – ohne offset kämen sie alle in den ersten
-2,4 s und stünden nur je ~0,4 s. Folge: In der **stummen Fassung** kommen diese vier Banner
-≈ 0,3–1 s nach ihrem Wort in der Caption (zum Mitlesen/Teleprompter zählt nur die Caption).
-Nach deiner eigenen Aufnahme lässt sich jeder Effekt einzeln nachschieben, ohne die Caption zu
-ändern: `{word: 'Java', offset: 0.8}` (Sekunden, positiv = später). Steht das Wort nicht mehr in der Caption,
-bricht das Rendern mit einer klaren Meldung ab (dann das Stichwort in `config.ts` anpassen,
-oder eine feste Zeit `{at: 1.2}` in Sekunden ab Segmentstart eintragen).
+## Neue Aufnahme?
 
-### Segment 4 (11–15 s): Belohnungen
+1. Rohdatei nach `public/voiceover-original/` legen und wie Take 2 aufbereiten: entweder
+   `scripts/make-voice-take2.sh` anpassen (Schnittliste `PIECES` oben im Skript) oder mit
+   `bash scripts/import-voiceover.sh aufnahme.m4a --auto-start` importieren (Mono, Hochpass,
+   Rauschminderung, Kompressor, −14 LUFS; `SEG_FROM`/`SEG_TO` oben im Skript = Spiegel von
+   `SEGMENTS`).
+2. Wort-Zeiten messen (z. B. im Studio scrubben oder mit Audacity) und eintragen:
+   `SEGMENTS[].from/to` (Schnitt ≈ 0,2 s vor dem ersten Wort eines Satzes), alle Werte in `CUE`
+   (Einschläge ≈ 0,17 s vor dem Wort), `VOICE_SPEECH` neu messen
+   (`ffmpeg -i public/voiceover.mp3 -af silencedetect=noise=-38dB:d=0.18 -f null -`). Das letzte
+   `to` + 3 s muss der Länge der MP3 entsprechen.
+3. Musik neu erzeugen (`python3 -I scripts/make-music.py --drop … --end …`, siehe oben), dann
+   `npm run render`.
 
-Oben steht zuerst das echte Menü „Prefix wählen“, dann knallen nacheinander deine Grafiken rein
-(immer nur eine groß, die vorige wird nach oben weggeschoben):
+Oder einfach die Aufnahme an Claude schicken – Schnitt, Timing, Effekte und Rendern werden dann
+für dich erledigt.
 
-| Datei (`public/brand/`) | Wann |
-|---|---|
-| `exklusiver-prefix.png` | beim Wort „exklusiven“ |
-| `deine-belohnung.png` | beim Wort „Belohnungen“ |
-| `battlepass.png` | 0,55 s nach „Belohnungen“ |
-| `kostenlos.png` | Stempel auf dem Battlepass, 0,35 s danach |
-| `betatester-chat.png` | Chat-Leiste „BETATESTER Deinname » GG!“ bei „Betatester-Prefix“ |
+Tipps zum Aufnehmen: ruhiger Raum (Teppich/Vorhänge), 15–20 cm Abstand zum Mikro, leicht
+seitlich sprechen (gegen „Plopp“), keine Musik im Hintergrund, mit Energie und lieber etwas
+schneller sprechen. Jedes gängige Format geht (m4a, mp3, wav, ogg, …).
 
-Darunter klein die echte Chatzeile `[Beta Tester] Inhaber` als Beweis. Alles einstellbar in
-`BRAND.rewards` (`src/config.ts`). Die alte EXKLUSIV-Pill (`exklusiv-pill.png`, `BRAND.exklusiv`)
-wird nicht mehr benutzt.
+### TTS-Voiceover (Reserve)
 
-## Ton
-
-Aktuell: **keine Stimme** (`USE_VOICEOVER = false`), nur ein **Mausklick** beim Klick auf
-„Jetzt bewerben“ im Discord-Teil (`public/sfx/click.wav`, mit ffmpeg erzeugt; Zeitpunkt =
-`DISCORD.clickAt`, Lautstärke `DISCORD.clickVolume`, `clickSound: null` schaltet ihn ab).
-Den Sprecher-Ton legst du selbst drüber (z. B. in TikTok/CapCut) – oder mit
-`scripts/import-voiceover.sh` importieren und `USE_VOICEOVER = true` setzen.
-
-## Voiceover
-
-Eingebunden über `<Audio>` in `src/GalacticfyBeta.tsx`, Datei `public/voiceover.mp3`
-(25,0 s, 48 kHz Stereo, −14 LUFS). Jeder Satz liegt im Zeitfenster seines Segments, die
-End-Card (22–25 s) ist ohne Sprache.
-
-**Ausschalten:** in `src/config.ts` `USE_VOICEOVER = false` setzen und neu rendern – oder
-einfach `npm run render:ohne-ton` (gleiches Video ohne Tonspur).
-
-### So nimmst du den Voiceover auf
-
-Du brauchst nur dein Handy oder ein Headset – und ~10 Minuten.
-
-**Die 6 Sätze** (genau wie die Captions; „Platz“ = so viel Zeit hast du pro Satz):
-
-| # | Fenster | Platz | Text |
-|---|---|---|---|
-| 1 | 0–3 s | ≈ 2,8 s | Dieser Minecraft-Server ist noch nicht fertig … und genau deshalb brauchen wir dich! |
-| 2 | 3–6 s | ≈ 2,8 s | Galacticfy sucht 20 Betatester – für Java und Bedrock! |
-| 3 | 6–11 s | ≈ 4,8 s | Teste unsere Systeme, finde Bugs, check die Menüs und hilf uns, die Wirtschaft perfekt auszubalancieren. |
-| 4 | 11–15 s | ≈ 3,8 s | Als Dankeschön bekommst du einen exklusiven Betatester-Prefix und weitere Belohnungen! |
-| 5 | 15–19 s | ≈ 3,8 s | Aber Achtung: Es gibt nur 20 Plätze – wer zuerst kommt … |
-| 6 | 19–22 s | ≈ 2,8 s | Komm jetzt auf unseren Discord und öffne ein Ticket! Link in der Bio. |
-
-Das ist zügiges TikTok-Tempo – vor allem Satz 1 und 3 sind knapp. Lieber mit Energie und
-etwas schneller sprechen als zu langsam (lächeln hilft hörbar).
-
-**Variante A – 6 einzelne Dateien (empfohlen):**
-
-1. Pro Satz eine Aufnahme: Aufnahme starten, kurz (~1 s) Pause, Satz sprechen, kurz Pause,
-   stoppen. Die Pausen schneidet das Skript automatisch weg – auch ein Klick/Tippen beim
-   Starten oder Stoppen der Aufnahme stört dabei nicht.
-2. Versprecher? Einfach diesen einen Satz nochmal aufnehmen und die beste Version nehmen.
-3. Dateien durchnummerieren, z. B. `satz1.m4a` … `satz6.m4a`.
-
-Tipp: Vorher einmal das stumme Video (`out/galacticfy-betatester-ohne-ton.mp4`) ansehen und
-mitlesen – dann hast du das Tempo im Ohr.
-
-**Variante B – ein Take mit dem Video als Teleprompter:**
-
-1. Das stumme Video `out/galacticfy-betatester-ohne-ton.mp4` auf dem PC (oder einem zweiten
-   Gerät) öffnen.
-2. Aufnahme starten, dann das Video starten und mitlesen – die Captions erscheinen Wort für
-   Wort genau dann, wenn du sie sprechen sollst.
-3. Beim Import mit `--auto-start` wird alles vor deinem ersten Wort abgeschnitten (ein kurzer
-   Klick beim Starten der Aufnahme oder des Videos wird dabei ignoriert).
-
-**Aufnehmen mit …** Handy-Sprachmemo (iPhone „Sprachmemos“, Android „Rekorder“), am PC mit
-OBS (nur Mikrofon-Spur, z. B. als `.mkv`/`.mp4`) oder Audacity (Export als WAV). Jedes
-gängige Format geht (m4a, mp3, wav, ogg, webm, mp4 …).
-
-- ruhiger Raum, Fenster zu, Lüfter/Benachrichtigungen aus; Zimmer mit Teppich, Vorhängen
-  oder Sofa klingt besser als ein kahler Raum (weniger Hall)
-- 15–20 cm Abstand zum Mikro, leicht seitlich sprechen (gegen „Plopp“ bei P/B)
-- keine Musik im Hintergrund (Musik kannst du später in TikTok drunterlegen)
-
-**Importieren & rendern:**
-
-```bash
-# Variante A: 6 Dateien in der Reihenfolge der Sätze
-bash scripts/import-voiceover.sh satz1.m4a satz2.m4a satz3.m4a satz4.m4a satz5.m4a satz6.m4a
-# Variante B: ein ganzer Take
-bash scripts/import-voiceover.sh aufnahme.m4a --auto-start
-
-npm run render            # mit deiner Stimme
-npm run render:ohne-ton   # stumme Fassung (unverändert)
-```
-
-(Auch als `npm run voiceover:import -- <dateien>`.) Das Skript braucht nur `bash` und `ffmpeg`.
-Es macht jede Aufnahme zu Mono, filtert Brummen/Trittschall (Hochpass 80 Hz), mindert Rauschen
-sanft, schneidet die Pausen vorne/hinten weg (Variante A; kurze Klicks beim Starten/Stoppen
-der Aufnahme zählen nicht als Sprache), komprimiert leicht und bringt alles auf
-−14 LUFS / −1,5 dBTP (48 kHz Stereo).
-
-**Windows:** Die Befehle in **Git Bash** ausführen (kommt mit „Git for Windows“; in der
-normalen Eingabeaufforderung/PowerShell gibt es kein `bash`, dann scheitert auch
-`npm run voiceover:import`). `ffmpeg` installieren mit `winget install Gyan.FFmpeg` und Git Bash
-danach neu öffnen. Unter WSL gehen Windows-Pfade als `/mnt/c/Users/…/satz1.m4a`. Oder einfach
-die Aufnahmen an Claude schicken (siehe unten).
-
-Danach zeigt es:
-
-- **Variante A:** pro Satz Länge vs. Platz, wie viel Pause vorne/hinten weggeschnitten wurde
-  (`weg v/h`) und wo er im Video liegt. Ist ein Satz zu lang,
-  kommt eine **WARNUNG** – dann den Satz etwas schneller neu aufnehmen, oder die Captions
-  umtimen (das Skript schlägt passende `from`/`to`-Werte für `SEGMENTS` vor; dann auch
-  `SEG_FROM`/`SEG_TO` oben im Skript anpassen und es nochmal laufen lassen).
-- **Variante B:** die erkannten Sprechpassagen neben den Caption-Fenstern. Liegt alles um
-  einen festen Betrag daneben: `--offset SEK` (positiv = Anfang abschneiden, negativ = Stille
-  davor).
-
-Beim ersten Import wird die bisherige TTS-Spur als `public/voiceover-tts.mp3` gesichert.
-Zurück zur TTS-Stimme: `cp public/voiceover-tts.mp3 public/voiceover.mp3`. Mit
-`--out probe.mp3` kannst du erst mal in eine andere Datei importieren und probehören.
-
-**Oder ganz einfach:** Schick die Aufnahmen an Claude – Import, Timing-Check, ggf. Umtimen
-der Captions und Rendern werden dann für dich erledigt.
-
-### TTS-Voiceover (aktuelle Spur)
-
-`public/voiceover.mp3` ist derzeit ein deutsches TTS-Voiceover (Stimme „Thorsten“,
-Piper/VITS `de_DE-thorsten-high`, CC0). **Neu erzeugen** (z. B. nach Textänderungen):
-
-```bash
-npm run voiceover        # = bash scripts/make-voiceover.sh  -> public/voiceover.mp3
-```
-
-Achtung: Das überschreibt `public/voiceover.mp3` – nach einer eigenen Aufnahme also nur mit
-`bash scripts/make-voiceover.sh --out public/voiceover-tts.mp3` benutzen.
-
-Das Skript legt ein Python-venv (piper-tts) und die Stimme in `~/.cache/galacticfy-voiceover`
-an (ca. 500 MB, Laufzeit ~3 min). Texte, Aussprache-Korrekturen (z. B. „Galacticfy“,
-„Bedrock“, „Prefix“) und das Timing stehen in `scripts/make-voiceover.py`. Ändert sich eine
-Caption in `src/config.ts`, bricht das Skript ab – dann dort `LINES` mit anpassen.
-
-### Timing an eine Aufnahme anpassen (von Hand)
-
-Weicht das Timing ab: `from`/`to` der `SEGMENTS` an die Sätze anpassen (Reihenfolge
-beibehalten, End-Card ≥ 2,5 s) – die Clip-Ausschnitte (`clip.start`/`clip.end`) mitziehen,
-sonst laufen sie schneller/langsamer. Die Einsatzzeitpunkte (`PREFIX.chatAt`, `SLOTS.alarmAt`, `DISCORD.clickAt`/`formAt`/`closeAt` …) ggf. auf die neuen Wörter
-legen – die Effekte der eigenen Grafiken (Stichwörter `cue`, Raketen-Übergänge an den
-Schnitten) wandern von selbst mit. Lautstärke bei Bedarf über `VOICEOVER_VOLUME` (0–1).
+`public/voiceover-tts.mp3` ist die alte deutsche TTS-Spur (Stimme „Thorsten“, Piper,
+CC0; passt nicht mehr zum aktuellen Timing). Neu erzeugen mit
+`bash scripts/make-voiceover.sh --out public/voiceover-tts.mp3` (ohne `--out` würde es deine
+Aufnahme in `public/voiceover.mp3` überschreiben!).
 
 ## Dateien
 
 ```
-src/config.ts          Texte, Timings, Farben, Clip- und Screenshot-Zuordnung
-src/GalacticfyBeta.tsx Haupt-Komposition (Layout, Segmente, End-Card, Audio)
-src/Footage.tsx        Gameplay-Clips (Zuschnitt, Zoom), Farblook, Blitz-Übergänge
-src/Visuals.tsx        Animierte Visuals je Segment (auf Glas-Panels, mit Screenshots + eigenen Grafiken)
+src/config.ts          Timings (CUE, SEGMENTS), Grafiken, Musik, Sound-Effekte, Farben, Clips, Screenshots
+src/GalacticfyBeta.tsx Haupt-Komposition (Layout, Segmente, End-Card, Wackeln/Punches, Ton-Mix)
+src/Root.tsx           Kompositionen GalacticfyBeta (mit Musik) + GalacticfyBeta-OhneMusik
+src/Footage.tsx        Gameplay-Clips (Zuschnitt, Zoom, Punch), Farblook, Blitz-Übergänge
+src/Visuals.tsx        Animierte Visuals je Segment (Ladebalken-Hook, Banner-Folgen, Discord-Weg)
 src/Brand.tsx          Eigene Grafiken: Bild, Glow/Glanz, Rakete, Raketen-Übergang, Bild-Wackeln
 src/Screen.tsx         Screenshot-Ausschnitt (<Img>, pixelated bzw. smooth) + Markierungsrahmen
-src/RichText.tsx       Kinetische Captions mit Highlight-Wörtern
+src/RichText.tsx       (abgeschaltete) Kinetic Captions + Cue-Berechnung
 src/Background.tsx     Sternenhimmel, Nebel, Pixel-Block-Partikel
 src/PixelIcon.tsx      Pixel-Art-Icons (Rakete, Controller, Geschenk, ...)
-public/clips/          Gameplay-Aufnahmen (werden mit eingecheckt)
+public/clips/          Gameplay-Aufnahmen
 public/screens/        Ausschnitte aus echten Ingame- und Discord-Screenshots (PNG)
-public/brand/          Eigene Grafiken (transparente PNGs: Hero, JAVA & BEDROCK, 4 Checklisten-Banner,
-                       EXKLUSIV-Pill, Rakete, Leiste)
-public/voiceover.mp3   Voiceover (aktuell TTS; eigene Aufnahme -> import-voiceover.sh)
-scripts/               import-voiceover.sh (eigene Aufnahme importieren),
-                       make-voiceover.sh / .py (TTS-Generator)
+public/brand/          Eigene Grafiken (transparente PNGs)
+public/voiceover.mp3   deine Aufnahme (Take 2, gemastert); Rohdateien in public/voiceover-original/
+public/music/bed.mp3   Musik-Bett (scripts/make-music.py)
+public/sfx/            Sound-Effekte (scripts/make-sfx.py; click.wav = Mausklick)
+scripts/render.sh      Rendern + Ton-Mastering (beide Fassungen)
+scripts/make-voice-take2.sh  Take 2 schneiden + mastern
+scripts/make-music.py / make-sfx.py   Musik / Sound-Effekte erzeugen
+scripts/import-voiceover.sh  andere Aufnahmen importieren
+scripts/make-voiceover.sh / .py      TTS-Generator (Reserve)
 ```

@@ -5,6 +5,7 @@ import {
   ChecklistScreen,
   COLORS,
   DISCORD,
+  END_CARD_FOOTER,
   FONT_HEAVY,
   FONT_PIXEL,
   INTRO,
@@ -102,68 +103,204 @@ const PixelPlanet: React.FC<{size: number}> = ({size}) => {
   );
 };
 
-/* ---------- 1: Intro – kleiner "Server lädt"-Balken ---------- */
-export const IntroVisual: React.FC<VProps> = ({duration}) => {
+/** Stärke der Glitch-Stöße (0–1) zum Frame `frame` (ab Segmentstart) – Start-Glitch in Frame 0
+ *  (INTRO.bootGlitch) + INTRO.glitches. */
+export const introGlitchAt = (frame: number) => {
+  const b = INTRO.bootGlitch;
+  // Start-Glitch: schon in Frame 0 voll da (Hook), flackert und ist nach b.frames vorbei
+  const boot = interpolate(frame - sec(b.at), [0, 1, 2, b.frames], [0.9, 0.55, 1, 0], clamp);
+  return INTRO.glitches.reduce((m, t, i) => {
+    const g = frame - sec(t);
+    // erster Stoß ("nicht") kräftiger und länger, zweiter ("fertig") kurz
+    const amp = i === 0 ? 1 : 0.8;
+    const len = i === 0 ? 9 : 7;
+    return Math.max(m, amp * interpolate(g, [-1, 0, 2, len], [0, 0.7, 1, 0], clamp));
+  }, boot);
+};
+
+/** Sticker-Einschlag "GESUCHT: DU!" (Frames für das Reinknallen; Einschlag = INTRO.stickerAt). */
+const INTRO_STICKER_SLAM = 5;
+
+/* ---------- 1: Intro (Hook) – großes "Server lädt"-Panel, das bei "nicht fertig" hängen bleibt ----------
+ * Frame 0: Panel steht schon groß mitten im Bild (Start-Glitch mit "ERR"), der Balken rast hoch.
+ * "nicht": hängt bei 73 % (Glitch), "fertig": zweiter Glitch. Schnitt ("und genau…"): Panel rückt
+ * nach oben und wird kleiner (Bildmitte frei für den Sturzflug auf den Spieler). "deshalb": Fehler-
+ * Zustand "TESTER FEHLEN!" (rot). "dich": Sticker "GESUCHT: DU!" knallt aufs Panel.
+ * Positionen in Bild-px (1080×1920). */
+export const IntroVisual: React.FC<VProps> = ({stage}) => {
   const frame = useCurrentFrame();
-  const pop = usePop(2, 11);
-  const progress = interpolate(frame, [8, duration * 0.6], [0, INTRO.percent], {
+  const {fps, width} = useVideoConfig();
+  const stageTop = stage?.top ?? 0;
+  const stageH = stage?.height ?? 773;
+  const Y = (abs: number) => abs - stageTop;
+  // steht in Frame 0 schon fast da (Feder läuft "vor" dem Video an) -> kein Einblenden aus Schwarz
+  const pop = usePop(-7, 11);
+  const stallAt = sec(INTRO.glitches[0]);
+  const progress = interpolate(frame, [0, stallAt], [INTRO.startPercent, INTRO.percent], {
     ...clamp,
-    easing: Easing.out(Easing.cubic),
+    easing: Easing.out(Easing.quad),
   });
+  const stalled = frame >= stallAt;
+  const glitch = introGlitchAt(frame);
   const blink = Math.floor(frame / 8) % 2 === 0;
   const segs = 14;
   const filled = Math.round((progress / 100) * segs);
+  // nach dem Hängenbleiben: letzter gefüllter Block blinkt rot ("hängt")
+  const stuckBlink = stalled && Math.floor((frame - stallAt) / 6) % 2 === 0;
+  // während des Glitchs springt die Anzeige kurz auf Fehler-Werte
+  const shownPercent = glitch > 0.4 ? ['ERR', '7_', '##', 'ERR'][frame % 4] : `${Math.round(progress)}%`;
+  const red = '#ff3355';
+
+  // Nach dem Schnitt: Panel rückt nach oben + wird kleiner
+  const dock = spring({frame: frame - sec(INTRO.dock.at), fps, config: {damping: 15, stiffness: 150, mass: 0.8}});
+  const centerY = INTRO.centerY + (INTRO.dock.centerY - INTRO.centerY) * dock;
+  const scale = (0.86 + 0.14 * pop) * (1 + (INTRO.dock.scale - 1) * dock);
+  // Fehler-Zustand ab "deshalb": rot, Text "TESTER FEHLEN!", kurzer Blitz + Stups
+  const errorAt = sec(INTRO.errorAt);
+  const err = frame >= errorAt;
+  const errHit = interpolate(frame - errorAt, [0, 1, 9], [0, 1, 0], clamp);
+  const alarmBlink = err && Math.floor((frame - errorAt) / 7) % 2 === 0;
+  // Sticker "GESUCHT: DU!" (Einschlag genau auf "dich")
+  const stickerStart = sec(INTRO.stickerAt) - INTRO_STICKER_SLAM;
+  const st = slamAt(frame - stickerStart, frame, {fromScale: 2.8, slamFrames: INTRO_STICKER_SLAM, shake: 10, seed: 'intro-sticker'});
+
+  const accent = err ? red : stalled ? (stuckBlink ? red : COLORS.purple) : COLORS.purple;
+  const labelColor = err || glitch > 0.4 ? red : COLORS.gold;
   return (
-    <Glass
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 26,
-        padding: '18px 30px 18px 18px',
-        transform: `translateY(${(1 - pop) * -60}px) scale(${0.8 + 0.2 * pop})`,
-        opacity: Math.min(1, pop * 1.4),
-      }}
-    >
-      <div style={{transform: `rotate(${frame * 0.6}deg)`}}>
-        <PixelPlanet size={120} />
-      </div>
-      <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
-        <div
-          style={{
-            fontFamily: FONT_PIXEL,
-            fontWeight: 700,
-            fontSize: 36,
-            color: COLORS.gold,
-            letterSpacing: 2,
-            textShadow: '3px 3px 0 #3a2400',
-          }}
-        >
-          {INTRO.label} {Math.round(progress)}%{blink ? '_' : ' '}
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            gap: 4,
-            padding: 5,
-            border: `4px solid ${COLORS.white}`,
-            background: 'rgba(0,0,0,0.5)',
-            boxShadow: `0 0 18px ${COLORS.purple}`,
-          }}
-        >
-          {new Array(segs).fill(0).map((_, i) => (
+    <div style={{position: 'relative', width, height: stageH, flexShrink: 0}}>
+      <div
+        style={{
+          position: 'absolute',
+          left: width / 2,
+          top: Y(centerY),
+          width: 'max-content',
+          transform: `translate(-50%, -50%) translateY(${(1 - pop) * -40}px) scale(${scale * (1 + 0.05 * errHit)})`,
+          opacity: Math.min(1, 0.55 + pop * 0.6),
+          filter: errHit > 0.01 ? `brightness(${1 + 0.6 * errHit})` : undefined,
+        }}
+      >
+        <Glitch amount={glitch * 0.9}>
+          <Glass
+            accent={accent}
+            style={{
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              padding: '24px 30px 30px',
+              // nur im Fehler-Zustand eigener (roter) Schein – sonst der normale Glas-Glow
+              ...(err
+                ? {boxShadow: `0 0 ${34 + 30 * errHit}px ${red}aa, inset 0 0 28px ${red}33, 0 14px 40px rgba(0,0,0,0.5)`}
+                : {}),
+            }}
+          >
+            <div style={{display: 'flex', alignItems: 'center', gap: 28}}>
+              <div style={{transform: `rotate(${frame * (stalled ? 0.15 : 0.9)}deg)`}}>
+                <PixelPlanet size={150} />
+              </div>
+              <div style={{display: 'flex', flexDirection: 'column', gap: 2}}>
+                <div
+                  style={{
+                    fontFamily: FONT_PIXEL,
+                    fontWeight: 700,
+                    fontSize: 44,
+                    color: labelColor,
+                    letterSpacing: 2,
+                    textShadow: err || glitch > 0.4 ? '3px 3px 0 #3a0010' : '3px 3px 0 #3a2400',
+                    whiteSpace: 'nowrap',
+                    opacity: err && !alarmBlink ? 0.75 : 1,
+                  }}
+                >
+                  {err ? INTRO.errorLabel : INTRO.label}
+                  {!err && blink ? '_' : ' '}
+                </div>
+                <div
+                  style={{
+                    fontFamily: FONT_HEAVY,
+                    fontWeight: 900,
+                    fontSize: 132,
+                    lineHeight: 1,
+                    color: err ? '#ffd0d8' : COLORS.white,
+                    textShadow: `0 0 30px ${err || glitch > 0.4 ? red : COLORS.cyan}, 7px 7px 0 ${COLORS.purpleDeep}`,
+                    fontVariantNumeric: 'tabular-nums',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {shownPercent}
+                </div>
+              </div>
+            </div>
             <div
-              key={i}
               style={{
-                width: 32,
-                height: 30,
-                background: i < filled ? (i % 2 ? COLORS.purple : COLORS.cyan) : 'rgba(255,255,255,0.1)',
-                boxShadow: i < filled ? 'inset -5px -5px 0 rgba(0,0,0,0.3)' : undefined,
+                display: 'flex',
+                gap: 5,
+                padding: 5,
+                border: `4px solid ${err || (stalled && stuckBlink) ? red : COLORS.white}`,
+                background: 'rgba(0,0,0,0.55)',
+                boxShadow: `0 0 18px ${err || (stalled && stuckBlink) ? red : COLORS.purple}`,
               }}
-            />
-          ))}
-        </div>
+            >
+              {new Array(segs).fill(0).map((_, i) => {
+                const isLast = i === filled - 1;
+                const bg =
+                  i < filled
+                    ? (stalled && isLast && stuckBlink) || (err && alarmBlink)
+                      ? red
+                      : i % 2
+                        ? COLORS.purple
+                        : COLORS.cyan
+                    : 'rgba(255,255,255,0.1)';
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      width: 44,
+                      height: 46,
+                      background: bg,
+                      boxShadow: i < filled ? 'inset -6px -6px 0 rgba(0,0,0,0.3)' : undefined,
+                    }}
+                  />
+                );
+              })}
+            </div>
+            {/* Sticker "GESUCHT: DU!" auf "dich" */}
+            {frame >= stickerStart ? (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: -46,
+                  bottom: -64,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  padding: '10px 22px 8px',
+                  background: COLORS.gold,
+                  border: '6px solid #fff',
+                  boxShadow: `0 0 ${26 + 30 * st.flash}px ${COLORS.gold}, 0 10px 20px rgba(0,0,0,0.55), inset -6px -6px 0 rgba(0,0,0,0.18)`,
+                  fontFamily: FONT_HEAVY,
+                  fontWeight: 900,
+                  lineHeight: 1,
+                  color: '#2a0a00',
+                  whiteSpace: 'nowrap',
+                  transformOrigin: '50% 50%',
+                  transform: `translate(${st.sx}px, ${st.sy}px) rotate(${9 + (1 - st.slam) * 16 + st.sr}deg) scale(${st.scale * (1 + st.squash)}, ${st.scale * (1 - st.squash)})`,
+                  opacity: st.opacity,
+                  filter: `brightness(${1 + 0.8 * st.flash})`,
+                  zIndex: 5,
+                }}
+              >
+                {/* "GESUCHT: DU!" -> zwei Zeilen: klein "GESUCHT:", groß "DU!" */}
+                {INTRO.sticker.split(/(?<=:)\s*/).map((part, i, all) => (
+                  <div key={i} style={{fontSize: all.length > 1 && i === 0 ? 46 : 128}}>
+                    {part}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </Glass>
+        </Glitch>
       </div>
-    </Glass>
+    </div>
   );
 };
 
@@ -529,6 +666,20 @@ const ChecklistBanner: React.FC<{i: number; start: number; exitAt: number | null
   const oy = (img.box.y + img.box.h / 2) * s;
   const sl = slamAt(f, frame, {fromScale: C.fromScale, slamFrames: C.slamFrames, shake: C.shake, seed: `banner-${i}`});
   const tilt = (i % 2 ? 1 : -1) * 7;
+  // letzter Banner: Glanz + Puls bei "perfekt", danach wippt er wie eine Waage ("auszubalancieren");
+  // dazu kleine Pulse aus C.bumps auf dem Banner, der gerade steht (z. B. "hilf")
+  const isLast = exitAt === null;
+  const bumpFrames = [...(isLast ? [C.bumpAt] : []), ...C.bumps]
+    .map((t) => sec(t))
+    .filter((bf) => bf > start + C.slamFrames && (exitAt === null || bf < exitAt) && bf <= frame);
+  const bumpF = bumpFrames.length ? frame - Math.max(...bumpFrames) : -100;
+  const bump = interpolate(bumpF, [0, 3, 12], [0, 1, 0], clamp);
+  const balF = isLast ? frame - sec(C.balance.at) : -1;
+  const balDur = sec(C.balance.duration);
+  const balance =
+    balF >= 0 && balF <= balDur
+      ? C.balance.degrees * Math.sin((balF / balDur) * Math.PI * 3) * (1 - balF / balDur)
+      : 0;
   // weggeschoben: kleiner, nach oben, leicht gekippt, ausblenden
   const e = g < 0 ? 0 : interpolate(g, [0, C.exitFrames], [0, 1], {...clamp, easing: Easing.out(Easing.cubic)});
   // kurz halten, damit der Banner danach noch ≥ 0,4 s sauber lesbar steht
@@ -549,6 +700,7 @@ const ChecklistBanner: React.FC<{i: number; start: number; exitAt: number | null
         />
       ) : null}
       <Shine img={img} width={w} f={sl.hit - 2} frames={16} opacity={0.8} />
+      <Shine img={img} width={w} f={bumpF - 1} frames={14} opacity={0.85} />
     </div>
   );
   return (
@@ -562,11 +714,11 @@ const ChecklistBanner: React.FC<{i: number; start: number; exitAt: number | null
         transformOrigin: `${ox}px ${oy}px`,
         transform: [
           `translate(${sl.sx}px, ${sl.sy - e * 170}px)`,
-          `rotate(${(1 - sl.slam) * tilt + sl.sr + e * -tilt * 0.6}deg)`,
-          `scale(${sl.scale * (1 + sl.squash) * (1 - 0.6 * e)}, ${sl.scale * (1 - sl.squash) * (1 - 0.6 * e)})`,
+          `rotate(${(1 - sl.slam) * tilt + sl.sr + e * -tilt * 0.6 + balance}deg)`,
+          `scale(${sl.scale * (1 + sl.squash) * (1 - 0.6 * e) * (1 + 0.05 * bump)}, ${sl.scale * (1 - sl.squash) * (1 - 0.6 * e) * (1 + 0.05 * bump)})`,
         ].join(' '),
         opacity: sl.opacity * (1 - e),
-        filter: `brightness(${1 + 1.1 * sl.flash}) drop-shadow(0 0 ${glow}px ${COLORS.purple}99) drop-shadow(0 12px 18px rgba(0,0,0,0.55))`,
+        filter: `brightness(${1 + 1.1 * sl.flash + 0.35 * bump}) drop-shadow(0 0 ${glow + 18 * bump}px ${COLORS.purple}99) drop-shadow(0 12px 18px rgba(0,0,0,0.55))`,
         zIndex: 2,
       }}
     >
@@ -715,6 +867,11 @@ export const ChecklistVisual: React.FC<VProps> = ({duration, stage, caption}) =>
                   interpolate(frame - g, [15, 17, 22], [0, 0.6, 0], clamp),
                 );
           const Card = CARD[c.screen];
+          // kleiner Stups + Kippen bei C.bumps (z. B. "hilf"), solange die Karte steht
+          const cardBump = C.bumps
+            .map((t) => sec(t))
+            .filter((bf) => bf > c.from && bf < to)
+            .reduce((m, bf) => Math.max(m, interpolate(frame - bf, [0, 3, 14], [0, 1, 0], clamp)), 0);
           return (
             <div
               key={k}
@@ -726,7 +883,7 @@ export const ChecklistVisual: React.FC<VProps> = ({duration, stage, caption}) =>
                 display: 'flex',
                 justifyContent: 'center',
                 opacity: Math.min(1, inP * 1.6) * outP,
-                transform: `translateY(${(1 - inP) * 50}px) scale(${C.screenScale * (0.82 + 0.18 * inP) * (0.92 + 0.08 * outP)})`,
+                transform: `translateY(${(1 - inP) * 50 - 10 * cardBump}px) scale(${C.screenScale * (0.82 + 0.18 * inP) * (0.92 + 0.08 * outP) * (1 + 0.06 * cardBump)}) rotate(${-2.5 * cardBump}deg)`,
                 transformOrigin: 'top center',
               }}
             >
@@ -761,9 +918,10 @@ export const ChecklistVisual: React.FC<VProps> = ({duration, stage, caption}) =>
 };
 
 /**
- * Ein Banner der Belohnungs-Folge (BRAND.rewards.banners): knallt bei `start` rein (slamAt) und
- * wird bei `exitAt` (Start des nächsten Banners) kleiner nach oben weggeschoben.
- * Mitte des sichtbaren Inhalts bei (cx, cy) in Stage-px.
+ * Ein Banner der Belohnungs-/CTA-Folge (BRAND.rewards.banners, BRAND.cta.banners): knallt bei
+ * `start` rein (slamAt) und wird bei `exitAt` (Start des nächsten Banners) kleiner nach oben
+ * weggeschoben. Mitte des sichtbaren Inhalts bei (cx, cy) in Stage-px. bumpAt = Frame, an dem
+ * er nochmal kurz pulsiert + glänzt (z. B. bei "Bio").
  */
 type BannerSeq = {
   banners: {image: keyof typeof BRAND.images; width: number}[];
@@ -779,9 +937,10 @@ const RewardBanner: React.FC<{
   cx: number;
   cy: number;
   seq?: BannerSeq;
-}> = ({i, start, exitAt, cx, cy, seq}) => {
+  bumpAt?: number;
+}> = ({i, start, exitAt, cx, cy, seq, bumpAt}) => {
   const frame = useCurrentFrame();
-  const R = seq ?? BRAND.rewards;
+  const R: BannerSeq = seq ?? BRAND.rewards;
   const b = R.banners[i];
   const img = BRAND.images[b.image];
   const f = frame - start;
@@ -795,7 +954,10 @@ const RewardBanner: React.FC<{
   const sl = slamAt(f, frame, {fromScale: R.fromScale, slamFrames: R.slamFrames, shake: R.shake, seed: `reward-${i}-${b.image}`});
   const tilt = (i % 2 ? 1 : -1) * 7;
   const e = g < 0 ? 0 : interpolate(g, [0, R.exitFrames], [0, 1], {...clamp, easing: Easing.out(Easing.cubic)});
-  const glow = 14 + 6 * Math.sin(frame / 6) + 26 * sl.flash;
+  const bf = bumpAt === undefined ? -100 : frame - bumpAt;
+  const bump = interpolate(bf, [0, 3, 12], [0, 1, 0], clamp);
+  const glow = 14 + 6 * Math.sin(frame / 6) + 26 * sl.flash + 20 * bump;
+  const k = 1 + 0.07 * bump;
   return (
     <div
       style={{
@@ -808,43 +970,118 @@ const RewardBanner: React.FC<{
         transform: [
           `translate(${sl.sx}px, ${sl.sy - e * 170}px)`,
           `rotate(${(1 - sl.slam) * tilt + sl.sr + e * -tilt * 0.6}deg)`,
-          `scale(${sl.scale * (1 + sl.squash) * (1 - 0.6 * e)}, ${sl.scale * (1 - sl.squash) * (1 - 0.6 * e)})`,
+          `scale(${sl.scale * (1 + sl.squash) * (1 - 0.6 * e) * k}, ${sl.scale * (1 - sl.squash) * (1 - 0.6 * e) * k})`,
         ].join(' '),
         opacity: sl.opacity * (1 - e),
-        filter: `brightness(${1 + 1.1 * sl.flash}) drop-shadow(0 0 ${glow}px ${COLORS.purple}99) drop-shadow(0 12px 18px rgba(0,0,0,0.55))`,
+        filter: `brightness(${1 + 1.1 * sl.flash + 0.3 * bump}) drop-shadow(0 0 ${glow}px ${COLORS.purple}99) drop-shadow(0 12px 18px rgba(0,0,0,0.55))`,
         zIndex: 2,
       }}
     >
       <div style={{position: 'relative', width: w, height: h}}>
         <BrandImg img={img} width={w} />
         <Shine img={img} width={w} f={sl.hit - 2} frames={16} opacity={0.8} />
+        {bumpAt !== undefined ? <Shine img={img} width={w} f={bf - 1} frames={14} opacity={0.85} /> : null}
       </div>
     </div>
   );
 };
 
-/** Frames (ab Segmentstart), an denen die Belohnungs-Banner starten (für Bild-Wackeln u. Ä.). */
-export const rewardStarts = (duration: number, caption?: string) =>
-  BRAND.rewards.banners.map((b, i) => (caption ? cueFrame(b.cue, caption, duration) : 30 + i * 25));
+/**
+ * Einschlag-Frames (ab Segmentstart) in Segment 4 – Banner oben, Battlepass, KOSTENLOS-Stempel –
+ * für Bild-Wackeln u. Ä. (gleiche Rechnung wie in PrefixVisual).
+ */
+export const rewardHits = (duration: number, caption?: string) => {
+  const R = BRAND.rewards;
+  const cf = (c: Parameters<typeof cueFrame>[0]) => cueFrame(c, caption ?? '', duration);
+  return [
+    ...R.banners.map((b) => cf(b.cue) + R.slamFrames),
+    cf(R.battlepass.cue) + R.slamFrames,
+    sec(R.kostenlos.at) + KOSTENLOS_SLAM,
+  ];
+};
+const KOSTENLOS_SLAM = 5;
+
+/**
+ * Funken-Explosion aus Pixel-Quadraten (Gold/Cyan/Lila/Weiß), z. B. aus dem Geschenk: startet bei
+ * Frame `at`, Mitte (x, y) in Stage-px, fliegt auseinander, fällt etwas und verglüht in `life` Frames.
+ */
+const PixelBurst: React.FC<{at: number; x: number; y: number; seed: string; count?: number; spread?: number; life?: number}> = ({
+  at,
+  x,
+  y,
+  seed,
+  count = 34,
+  spread = 520,
+  life = 24,
+}) => {
+  const frame = useCurrentFrame();
+  const f = frame - at;
+  if (f < 0 || f > life) return null;
+  const t = f / life;
+  const e = 1 - Math.pow(1 - t, 3);
+  const colors = [COLORS.gold, COLORS.cyan, COLORS.purple, '#ffffff'];
+  return (
+    <>
+      {new Array(count).fill(0).map((_, i) => {
+        const a = random(`${seed}-a-${i}`) * Math.PI * 2;
+        const v = (0.4 + 0.6 * random(`${seed}-v-${i}`)) * spread;
+        const size = 16 + 22 * random(`${seed}-s-${i}`);
+        const px = x + Math.cos(a) * v * e;
+        const py = y + Math.sin(a) * v * e * 0.75 + 240 * t * t;
+        const c = colors[i % colors.length];
+        return (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: px - size / 2,
+              top: py - size / 2,
+              width: size,
+              height: size,
+              background: c,
+              boxShadow: `0 0 ${size}px ${c}`,
+              transform: `rotate(${45 + f * 14 * (random(`${seed}-r-${i}`) - 0.5)}deg) scale(${1 - 0.6 * t})`,
+              opacity: t < 0.65 ? 1 : (1 - t) / 0.35,
+              zIndex: 3,
+            }}
+          />
+        );
+      })}
+    </>
+  );
+};
 
 /* ---------- 4: Belohnungen – Banner-Folge (eigene Grafiken) + Chat-Leiste + echte Chatzeile ---------- */
 export const PrefixVisual: React.FC<VProps> = ({duration, stage, caption}) => {
   const frame = useCurrentFrame();
   const {fps, width} = useVideoConfig();
-  const stageTop = stage?.top ?? 0;
   const stageH = stage?.height ?? 773;
+  const stageTop = stage?.top ?? 0;
   const Y = (abs: number) => abs - stageTop;
   const R = BRAND.rewards;
-  const starts = rewardStarts(duration, caption);
+  const starts = R.banners.map((b) => cueFrame(b.cue, caption ?? '', duration));
 
-  // echtes Menü "Prefix wählen" – steht oben, bis der erste Banner reinknallt
+  // echtes Menü "Prefix wählen" (optional, R.menu) – steht oben, bis der erste Banner reinknallt
+  const menu = R.menu;
   const menuP = spring({frame: frame - sec(PREFIX.menuAt), fps, config: {damping: 12, stiffness: 150, mass: 0.8}});
-  const menuOut = interpolate(frame, [starts[0], starts[0] + R.slamFrames], [1, 0], clamp);
-  const menuW = 704 * R.menu.scale;
-  const menuH = 528 * R.menu.scale;
+  const menuOut = menu ? interpolate(frame, [starts[0], starts[0] + R.slamFrames], [1, 0], clamp) : 0;
+  const menuW = SCREENS.prefixMenuChest.width * (menu?.scale ?? 1);
+  const menuH = SCREENS.prefixMenuChest.height * (menu?.scale ?? 1);
+
+  // Battlepass-Ticket: schiebt die Chat-Zeilen raus und knallt in die Mitte
+  const bp = R.battlepass;
+  const bpStart = cueFrame(bp.cue, caption ?? '', duration);
+  const bpImg = BRAND.images[bp.image];
+  const bpS = bp.width / bpImg.box.w;
+  const bpW = bpImg.width * bpS;
+  const bpH = bpImg.height * bpS;
+  const bpox = (bpImg.box.x + bpImg.box.w / 2) * bpS;
+  const bpoy = (bpImg.box.y + bpImg.box.h / 2) * bpS;
+  const bpSl = slamAt(frame - bpStart, frame, {fromScale: R.fromScale, slamFrames: R.slamFrames, shake: R.shake, seed: 'battlepass'});
+  const chatOut = interpolate(frame, [bpStart - 1, bpStart + R.exitFrames - 2], [0, 1], {...clamp, easing: Easing.in(Easing.cubic)});
 
   // Chat-Leiste (eigene Grafik) + echte Chatzeile
-  const chatAt = caption ? cueFrame(R.chatBar.cue, caption, duration) : sec(PREFIX.chatAt);
+  const chatAt = cueFrame(R.chatBar.cue, caption ?? '', duration);
   const barX = spring({frame: frame - chatAt, fps, config: {damping: 18, stiffness: 140, overshootClamping: true}});
   const barP = spring({frame: frame - chatAt, fps, config: {damping: 13, stiffness: 150}});
   const realX = spring({
@@ -862,34 +1099,34 @@ export const PrefixVisual: React.FC<VProps> = ({duration, stage, caption}) => {
   // "KOSTENLOS!"-Stempel auf dem Battlepass
   const k = R.kostenlos;
   const kImg = BRAND.images.kostenlos;
-  const kStart = starts[starts.length - 1] + sec(k.after);
+  const kStart = sec(k.at);
   const kf = frame - kStart;
   const ks = k.width / kImg.box.w;
   const kW = kImg.width * ks;
   const kH = kImg.height * ks;
   const kox = (kImg.box.x + kImg.box.w / 2) * ks;
   const koy = (kImg.box.y + kImg.box.h / 2) * ks;
-  const kSl = slamAt(kf, frame, {fromScale: 2.6, slamFrames: 5, shake: 10, seed: 'kostenlos'});
+  const kSl = slamAt(kf, frame, {fromScale: 2.6, slamFrames: KOSTENLOS_SLAM, shake: 10, seed: 'kostenlos'});
 
   return (
     <div style={{position: 'relative', width, height: stageH, flexShrink: 0}}>
       {/* echtes Menü als Einstieg */}
-      {menuOut > 0 ? (
+      {menu && menuOut > 0 ? (
         <div
           style={{
             position: 'absolute',
             left: width / 2 - menuW / 2,
-            top: Y(R.menu.centerY) - menuH / 2,
+            top: Y(menu.centerY) - menuH / 2,
             transform: `translateY(${(1 - menuP) * 80}px) scale(${(0.55 + 0.45 * menuP) * (0.7 + 0.3 * menuOut)}) rotate(${(1 - menuP) * -5}deg)`,
             opacity: Math.min(1, menuP * 1.6) * menuOut,
             filter: neon(COLORS.purple, 1.2),
           }}
         >
-          <PrefixMenu scale={R.menu.scale} />
+          <PrefixMenu scale={menu.scale} />
         </div>
       ) : null}
 
-      {/* Banner-Folge: EXKLUSIVER PREFIX -> DEINE BELOHNUNG -> BATTLEPASS */}
+      {/* Banner-Folge oben: DEINE BELOHNUNG ("Dankeschön") -> EXKLUSIVER PREFIX */}
       {R.banners.map((b, i) => (
         <RewardBanner
           key={b.image}
@@ -897,9 +1134,85 @@ export const PrefixVisual: React.FC<VProps> = ({duration, stage, caption}) => {
           start={starts[i]}
           exitAt={i < starts.length - 1 ? starts[i + 1] : null}
           cx={width / 2}
-          cy={Y(R.centerY)}
+          cy={Y(b.centerY ?? R.centerY)}
+          bumpAt={b.bumpAt === undefined ? undefined : sec(b.bumpAt)}
         />
       ))}
+      {/* Funken-Explosion aus dem Geschenk (Einschlag + "bekommst du") */}
+      {R.banners.flatMap((b, i) =>
+        b.burst
+          ? [starts[i] + R.slamFrames, ...(b.bumpAt === undefined ? [] : [sec(b.bumpAt)])].map((at, k) => (
+              // aus dem Geschenk (linkes Viertel der Grafik)
+              <PixelBurst key={`burst-${i}-${k}`} at={at} x={width / 2 - b.width * 0.33} y={Y(b.centerY ?? R.centerY)} seed={`burst-${i}-${k}`} />
+            ))
+          : [],
+      )}
+
+      {/* Chat-Leiste "BETATESTER Deinname » GG!" – fliegt nach links raus, wenn der Battlepass kommt */}
+      {frame >= chatAt && chatOut < 1 ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: width / 2 - (barImg.box.x + barImg.box.w / 2) * bs,
+            top: Y(R.chatBar.centerY) - (barImg.box.y + barImg.box.h / 2) * bs,
+            width: barW,
+            height: barH,
+            zIndex: 3,
+            transform: `translateX(${(1 - barX) * -1000 - chatOut * 1100}px) scale(${0.9 + 0.1 * barP})`,
+            opacity: Math.min(1, barP * 2) * (1 - chatOut * 0.5),
+            filter: `drop-shadow(0 0 ${16 + 6 * Math.sin(frame / 6)}px ${COLORS.cyan}88)`,
+          }}
+        >
+          <div style={{position: 'relative', width: barW, height: barH}}>
+            <BrandImg img={barImg} width={barW} />
+            <Shine img={barImg} width={barW} f={frame - chatAt - 10} frames={18} opacity={0.7} />
+          </div>
+        </div>
+      ) : null}
+
+      {/* echte Chatzeile "[Beta Tester] Inhaber" als Beweis – fliegt nach rechts raus */}
+      {frame >= chatAt + R.realChat.delay && chatOut < 1 ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: width / 2 - realW / 2,
+            top: Y(R.realChat.top),
+            zIndex: 3,
+            transform: `translateX(${(1 - realX) * 1000 + chatOut * 1100}px)`,
+            opacity: 1 - chatOut * 0.5,
+            boxShadow: `0 0 24px ${COLORS.cyan}88, 0 0 0 4px ${COLORS.cyan}bb, 0 10px 24px rgba(0,0,0,0.55)`,
+          }}
+        >
+          <Screen img={SCREENS.chatBetaTester} region={line} scale={R.realChat.scale} />
+        </div>
+      ) : null}
+
+      {/* Battlepass-Ticket in der Mitte */}
+      {frame >= bpStart ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: width / 2 - bpox,
+            top: Y(bp.centerY) - bpoy,
+            width: bpW,
+            height: bpH,
+            zIndex: 3,
+            transformOrigin: `${bpox}px ${bpoy}px`,
+            transform: [
+              `translate(${bpSl.sx}px, ${bpSl.sy}px)`,
+              `rotate(${(1 - bpSl.slam) * 7 + bpSl.sr}deg)`,
+              `scale(${bpSl.scale * (1 + bpSl.squash)}, ${bpSl.scale * (1 - bpSl.squash)})`,
+            ].join(' '),
+            opacity: bpSl.opacity,
+            filter: `brightness(${1 + 1.1 * bpSl.flash}) drop-shadow(0 0 ${14 + 6 * Math.sin(frame / 6) + 26 * bpSl.flash}px ${COLORS.gold}99) drop-shadow(0 12px 18px rgba(0,0,0,0.55))`,
+          }}
+        >
+          <div style={{position: 'relative', width: bpW, height: bpH}}>
+            <BrandImg img={bpImg} width={bpW} />
+            <Shine img={bpImg} width={bpW} f={bpSl.hit - 2} frames={16} opacity={0.8} />
+          </div>
+        </div>
+      ) : null}
 
       {/* Stempel "KOSTENLOS!" */}
       {kf >= 0 ? (
@@ -923,51 +1236,15 @@ export const PrefixVisual: React.FC<VProps> = ({duration, stage, caption}) => {
           </div>
         </div>
       ) : null}
-
-      {/* Chat-Leiste "BETATESTER Deinname » GG!" */}
-      {frame >= chatAt ? (
-        <div
-          style={{
-            position: 'absolute',
-            left: width / 2 - (barImg.box.x + barImg.box.w / 2) * bs,
-            top: Y(R.chatBar.centerY) - (barImg.box.y + barImg.box.h / 2) * bs,
-            width: barW,
-            height: barH,
-            zIndex: 3,
-            transform: `translateX(${(1 - barX) * -1000}px) scale(${0.9 + 0.1 * barP})`,
-            opacity: Math.min(1, barP * 2),
-            filter: `drop-shadow(0 0 ${16 + 6 * Math.sin(frame / 6)}px ${COLORS.cyan}88)`,
-          }}
-        >
-          <div style={{position: 'relative', width: barW, height: barH}}>
-            <BrandImg img={barImg} width={barW} />
-            <Shine img={barImg} width={barW} f={frame - chatAt - 10} frames={18} opacity={0.7} />
-          </div>
-        </div>
-      ) : null}
-
-      {/* echte Chatzeile "[Beta Tester] Inhaber" als Beweis */}
-      {frame >= chatAt + R.realChat.delay ? (
-        <div
-          style={{
-            position: 'absolute',
-            left: width / 2 - realW / 2,
-            top: Y(R.realChat.top),
-            zIndex: 3,
-            transform: `translateX(${(1 - realX) * 1000}px)`,
-            boxShadow: `0 0 24px ${COLORS.cyan}88, 0 0 0 4px ${COLORS.cyan}bb, 0 10px 24px rgba(0,0,0,0.55)`,
-          }}
-        >
-          <Screen img={SCREENS.chatBetaTester} region={line} scale={R.realChat.scale} />
-        </div>
-      ) : null}
     </div>
   );
 };
 
-/* ---------- 5: 20 Plätze – echte Scoreboard-Zeile "Online › 1/20" + 20 freie Slots ----------
- * Die Slots bleiben "frei" (leere, leuchtende Rahmen mit "+") und werden beim Alarm nicht rot –
- * sonst sähe es nach "schon voll / ausgebucht" aus. Rot werden nur Rahmen + Sticker. */
+/* ---------- 5: 20 Plätze – Zähler + 20 Slots ----------
+ * Die Slots ploppen auf, der Zähler landet genau bei "zwanzig Plätze" auf 20. Bei "wer zuerst kommt"
+ * Alarm: Zähler "NOCH FREI" zählt runter (20 -> 17), drei Slots werden vergeben (Spielerkopf, rot) –
+ * die meisten bleiben frei (kein "ausgebucht"). Optional die echte Scoreboard-Zeile "Online › 1/20"
+ * (SLOTS.showOnline). */
 export const SlotsVisual: React.FC<VProps> = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
@@ -984,11 +1261,18 @@ export const SlotsVisual: React.FC<VProps> = () => {
   const blink = alarm && Math.floor((frame - alarmAt) / 5) % 2 === 0;
   const accent = alarm ? '#ff3355' : COLORS.cyan;
   const shake = alarm ? Math.sin(frame * 2.3) * 6 * interpolate(frame - alarmAt, [0, 20], [1, 0.35], clamp) : 0;
+  // vergebene Plätze (Frames ab Segmentstart) -> Zähler runter
+  const takenFrames = SLOTS.takenAt.map((t) => sec(t));
+  const takenCount = takenFrames.filter((f) => frame >= f).length;
+  const lastTaken = takenCount ? takenFrames[takenCount - 1] : -100;
+  const takeBump = interpolate(frame - lastTaken, [0, 2, 9], [0, 1, 0], clamp);
+  const count = full ? SLOTS.total - takenCount : shown;
   const countPop = spring({frame: frame - fillTo, fps, config: {damping: 8, stiffness: 200}});
   const ring = spring({frame: frame - fillTo + 2, fps, config: {damping: 12}});
   const tick = shown > 0 ? spring({frame: frame - (fillFrom + ((shown - 1) / SLOTS.total) * (fillTo - fillFrom)), fps, config: {damping: 10}}) : 0;
   const alarmPop = alarm ? spring({frame: frame - alarmAt, fps, config: {damping: 9, stiffness: 200}}) : 0;
   const onlineScale = 2;
+  const red = '#ff3355';
   return (
     <Glass
       accent={accent}
@@ -1003,35 +1287,53 @@ export const SlotsVisual: React.FC<VProps> = () => {
         opacity: Math.min(1, panel * 1.4),
       }}
     >
-      {/* echte Scoreboard-Zeile */}
-      <div style={{position: 'relative', boxShadow: `0 0 0 4px rgba(255,255,255,0.12)`}}>
-        <Screen img={SCREENS.scoreboardOnline} scale={onlineScale} />
-        <Highlight
-          region={SCREEN_REGIONS.onlineMax}
-          scale={onlineScale}
-          color={COLORS.cyan}
-          progress={ring}
-          pulse={frame}
-          pad={0}
-        />
-      </div>
+      {/* echte Scoreboard-Zeile (optional) */}
+      {SLOTS.showOnline ? (
+        <div style={{position: 'relative', boxShadow: `0 0 0 4px rgba(255,255,255,0.12)`}}>
+          <Screen img={SCREENS.scoreboardOnline} scale={onlineScale} />
+          <Highlight
+            region={SCREEN_REGIONS.onlineMax}
+            scale={onlineScale}
+            color={COLORS.cyan}
+            progress={ring}
+            pulse={frame}
+            pad={0}
+          />
+        </div>
+      ) : null}
 
-      <div style={{display: 'flex', alignItems: 'center', gap: 28}}>
+      <div style={{position: 'relative', display: 'flex', alignItems: 'center', gap: 28}}>
+        {/* Ring um die "20", sobald alle Plätze da sind ("zwanzig Plätze") */}
+        {!SLOTS.showOnline && ring > 0.01 && ring < 0.99 ? (
+          <div
+            style={{
+              position: 'absolute',
+              left: 85 - 150 * ring,
+              top: 64 - 150 * ring,
+              width: 300 * ring,
+              height: 300 * ring,
+              borderRadius: '50%',
+              border: `${8 * (1 - ring) + 2}px solid ${COLORS.cyan}`,
+              boxShadow: `0 0 30px ${COLORS.cyan}`,
+              opacity: 0.9 * (1 - ring),
+            }}
+          />
+        ) : null}
         <div
           style={{
             fontFamily: FONT_HEAVY,
             fontWeight: 900,
             fontSize: 128,
             lineHeight: 1,
-            color: COLORS.white,
-            transform: `scale(${full ? 1 + 0.18 * (1 - countPop) + (blink ? 0.06 : 0) : 0.92 + 0.08 * tick})`,
+            color: alarm ? '#ffe3e8' : COLORS.white,
+            transform: `scale(${full ? 1 + 0.18 * (1 - countPop) + (blink ? 0.06 : 0) + 0.16 * takeBump : 0.92 + 0.08 * tick})`,
             textShadow: `0 0 34px ${accent}, 8px 8px 0 ${COLORS.purpleDeep}`,
             fontVariantNumeric: 'tabular-nums',
             minWidth: 170,
             textAlign: 'right',
           }}
         >
-          {shown}
+          {count}
         </div>
         <div
           style={{
@@ -1039,12 +1341,13 @@ export const SlotsVisual: React.FC<VProps> = () => {
             fontWeight: 700,
             fontSize: 48,
             letterSpacing: 4,
-            color: COLORS.cyan,
+            color: alarm ? '#ff6680' : COLORS.cyan,
             textShadow: '4px 4px 0 rgba(0,0,0,0.6)',
             whiteSpace: 'nowrap',
+            minWidth: 330,
           }}
         >
-          {SLOTS.label}
+          {alarm ? SLOTS.alarmCountLabel : SLOTS.label}
         </div>
       </div>
 
@@ -1057,13 +1360,13 @@ export const SlotsVisual: React.FC<VProps> = () => {
           marginTop: -26,
           padding: '8px 18px',
           background: 'rgba(30,4,16,0.92)',
-          border: '5px solid #ff3355',
-          boxShadow: '0 0 28px #ff3355',
+          border: `5px solid ${red}`,
+          boxShadow: `0 0 28px ${red}`,
           fontFamily: FONT_HEAVY,
           fontWeight: 900,
           fontSize: 40,
           color: '#ff4466',
-          textShadow: '0 0 14px #ff3355, 0 3px 0 rgba(0,0,0,0.6)',
+          textShadow: `0 0 14px ${red}, 0 3px 0 rgba(0,0,0,0.6)`,
           whiteSpace: 'nowrap',
           transform: `scale(${alarmPop}) rotate(${7 + Math.sin(frame / 4) * 2}deg)`,
         }}
@@ -1088,13 +1391,19 @@ export const SlotsVisual: React.FC<VProps> = () => {
           const p = on
             ? spring({frame: frame - (fillFrom + (i / SLOTS.total) * (fillTo - fillFrom)), fps, config: {damping: 10, stiffness: 220}})
             : 0;
-          // "Wer zuerst kommt": eine Leuchtwelle läuft über die (weiterhin freien) Slots
-          const wave = alarm ? Math.max(0, Math.sin((frame - alarmAt) / 2.2 - (i % 10) * 0.55 - Math.floor(i / 10) * 0.8)) : 0;
-          const c = COLORS.cyan;
+          // vergeben? (SLOTS.takenSlots[k] ab SLOTS.takenAt[k])
+          const k = SLOTS.takenSlots.indexOf(i);
+          const takenF = k >= 0 && k < takenFrames.length ? frame - takenFrames[k] : -1;
+          const taken = takenF >= 0;
+          const tp = taken ? spring({frame: takenF, fps, config: {damping: 9, stiffness: 240}}) : 0;
+          // "Wer zuerst kommt": eine Leuchtwelle läuft über die freien Slots
+          const wave = alarm && !taken ? Math.max(0, Math.sin((frame - alarmAt) / 2.2 - (i % 10) * 0.55 - Math.floor(i / 10) * 0.8)) : 0;
+          const c = taken ? red : COLORS.cyan;
           return (
             <div
               key={i}
               style={{
+                position: 'relative',
                 width: 66,
                 height: 60,
                 background: '#8b8b8b',
@@ -1104,23 +1413,44 @@ export const SlotsVisual: React.FC<VProps> = () => {
                 justifyContent: 'center',
               }}
             >
-              {/* freier Platz: dunkler Rahmen mit leuchtendem Rand und "+" */}
-              <div
-                style={{
-                  position: 'relative',
-                  width: 42,
-                  height: 38,
-                  boxSizing: 'border-box',
-                  background: 'rgba(6,16,34,0.9)',
-                  border: `4px solid ${c}`,
-                  opacity: on ? 1 : 0,
-                  transform: `scale(${p * (1 + 0.1 * wave)})`,
-                  boxShadow: `0 0 ${10 + 14 * wave}px ${c}, inset 0 0 8px ${c}66`,
-                }}
-              >
-                <div style={{position: 'absolute', left: '50%', top: '50%', width: 18, height: 5, marginLeft: -9, marginTop: -2.5, background: c}} />
-                <div style={{position: 'absolute', left: '50%', top: '50%', width: 5, height: 18, marginLeft: -2.5, marginTop: -9, background: c}} />
-              </div>
+              {taken ? (
+                // vergebener Platz: Spielerkopf mit rotem Rahmen
+                <div
+                  style={{
+                    position: 'relative',
+                    width: 46,
+                    height: 46,
+                    boxSizing: 'border-box',
+                    border: `4px solid ${red}`,
+                    background: 'rgba(40,6,16,0.95)',
+                    boxShadow: `0 0 ${10 + 18 * (1 - Math.min(1, takenF / 8))}px ${red}`,
+                    transform: `scale(${0.4 + 0.6 * tp})`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <PixelIcon name="head" size={32} />
+                </div>
+              ) : (
+                // freier Platz: dunkler Rahmen mit leuchtendem Rand und "+"
+                <div
+                  style={{
+                    position: 'relative',
+                    width: 42,
+                    height: 38,
+                    boxSizing: 'border-box',
+                    background: 'rgba(6,16,34,0.9)',
+                    border: `4px solid ${c}`,
+                    opacity: on ? 1 : 0,
+                    transform: `scale(${p * (1 + 0.1 * wave)})`,
+                    boxShadow: `0 0 ${10 + 14 * wave}px ${c}, inset 0 0 8px ${c}66`,
+                  }}
+                >
+                  <div style={{position: 'absolute', left: '50%', top: '50%', width: 18, height: 5, marginLeft: -9, marginTop: -2.5, background: c}} />
+                  <div style={{position: 'absolute', left: '50%', top: '50%', width: 5, height: 18, marginLeft: -2.5, marginTop: -9, background: c}} />
+                </div>
+              )}
             </div>
           );
         })}
@@ -1163,7 +1493,7 @@ const DC_BAR_GAP = 14;
 const DC_BANNER_SCALE = 1.45;
 const DC_CURSOR = 100; // Größe des Maus-Cursors (px)
 
-export const DiscordVisual: React.FC<VProps> = ({stage}) => {
+export const DiscordVisual: React.FC<VProps> = ({duration, stage, caption}) => {
   const frame = useCurrentFrame();
   const {fps, width, height} = useVideoConfig();
   const stageTop = stage?.top ?? 0;
@@ -1221,6 +1551,12 @@ export const DiscordVisual: React.FC<VProps> = ({stage}) => {
   // -> die letzten Frames vor dem End-Card-Blitz zeigen den Flug ins lila Portal.
   const close = interpolate(frame - sec(DISCORD.closeAt), [0, 7], [0, 1], {...clamp, easing: Easing.in(Easing.quad)});
   const open = 1 - close;
+  // Discord-Fenster + "/dc"-Banner gehen weg, sobald das Formular aufploppt (sonst ragen
+  // abgeschnittene Reste links/rechts neben dem Popup heraus)
+  const under = interpolate(frame - formAt, [0, 6], [1, 0], {...clamp, easing: Easing.in(Easing.quad)});
+  // "(Link in Bio)" ab "Bio"
+  const bioF = frame - sec(DISCORD.linkInBio.at);
+  const bioP = spring({frame: bioF, fps, config: {damping: 11, stiffness: 170, mass: 0.7}});
 
   // Cursor (Spitze = linke obere Ecke des Icons) kommt von rechts durch die leere Button-Zeile
   // (nicht über Text oder Caption), klickt unten rechts auf den Button (Beschriftung bleibt
@@ -1242,8 +1578,8 @@ export const DiscordVisual: React.FC<VProps> = ({stage}) => {
           position: 'absolute',
           left: panelCenterX - bannerW / 2,
           top: Y(bannerTop),
-          transform: `scale(${0.5 + 0.5 * bannerP}) translateY(${(1 - bannerP) * 60}px)`,
-          opacity: Math.min(1, bannerP * 1.5) * open,
+          transform: `scale(${(0.5 + 0.5 * bannerP) * (0.9 + 0.1 * under)}) translateY(${(1 - bannerP) * 60 - (1 - under) * 40}px)`,
+          opacity: Math.min(1, bannerP * 1.5) * open * under,
           filter: neon(BLURPLE, glow),
         }}
       >
@@ -1266,8 +1602,8 @@ export const DiscordVisual: React.FC<VProps> = ({stage}) => {
           top: Y(panelTop),
           width: panelW,
           height: panelH,
-          transform: `translateY(${(1 - panelP) * 80}px) scale(${0.9 + 0.1 * panelP})`,
-          opacity: Math.min(1, panelP * 1.6) * open,
+          transform: `translateY(${(1 - panelP) * 80 + (1 - under) * 60}px) scale(${(0.9 + 0.1 * panelP) * (0.92 + 0.08 * under)})`,
+          opacity: Math.min(1, panelP * 1.6) * open * under,
         }}
       >
         <div
@@ -1400,19 +1736,52 @@ export const DiscordVisual: React.FC<VProps> = ({stage}) => {
           />
         </div>
       ) : null}
-      {/* Deine Banner unten (früher Untertitel-Bereich), über der Abdunklung */}
-      {BRAND.cta.banners.map((b, i) => (
-        <div key={b.image} style={{position: 'absolute', left: 0, top: 0, zIndex: 60}}>
-          <RewardBanner
-            i={i}
-            seq={BRAND.cta}
-            start={sec(b.cue && 'at' in b.cue ? b.cue.at : 0)}
-            exitAt={i < BRAND.cta.banners.length - 1 ? sec((BRAND.cta.banners[i + 1].cue as {at: number}).at) : null}
-            cx={540}
-            cy={BRAND.cta.centerY - (stage?.top ?? 0)}
-          />
+      {/* "(Link in Bio)" unter dem letzten Banner, ab "Bio" – passend zum gesprochenen Text */}
+      {bioF >= 0 ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: Y(DISCORD.linkInBio.centerY) - 32,
+            height: 64,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 20,
+            zIndex: 61,
+            fontFamily: FONT_PIXEL,
+            fontWeight: 700,
+            fontSize: 50,
+            color: COLORS.gold,
+            textShadow: '4px 4px 0 #3a2400, 0 0 18px rgba(0,0,0,0.8)',
+            whiteSpace: 'nowrap',
+            opacity: Math.min(1, bioP * 2),
+            transform: `translateY(${(1 - bioP) * 40 + Math.sin(bioF / 5) * 6}px) scale(${0.6 + 0.4 * bioP})`,
+          }}
+        >
+          <PixelIcon name="arrowUp" size={52} glow={COLORS.cyan} />
+          {END_CARD_FOOTER}
+          <PixelIcon name="arrowUp" size={52} glow={COLORS.cyan} />
         </div>
-      ))}
+      ) : null}
+      {/* Deine Banner unten (früher Untertitel-Bereich), über der Abdunklung */}
+      {BRAND.cta.banners.map((b, i) => {
+        const at = (j: number) => cueFrame(BRAND.cta.banners[j].cue, caption ?? '', duration);
+        return (
+          <div key={b.image} style={{position: 'absolute', left: 0, top: 0, zIndex: 60}}>
+            <RewardBanner
+              i={i}
+              seq={BRAND.cta}
+              start={at(i)}
+              exitAt={i < BRAND.cta.banners.length - 1 ? at(i + 1) : null}
+              cx={540}
+              cy={BRAND.cta.centerY - stageTop}
+              bumpAt={b.bumpAt === undefined ? undefined : sec(b.bumpAt)}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 };
