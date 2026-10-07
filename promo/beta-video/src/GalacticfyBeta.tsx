@@ -359,66 +359,8 @@ const EndCard: React.FC = () => {
             </div>
           );
         })}
-        {/* Hervorgehoben: der echte Weg zur Bewerbung (Discord /dc -> #tickets -> Jetzt bewerben) */}
-        <div
-          style={{
-            ...endRowStyle,
-            padding: '20px 24px',
-            border: `5px solid ${COLORS.cyan}`,
-            boxShadow: `0 0 ${30 + Math.sin(frame / 5) * 14}px ${COLORS.cyan}`,
-            transform: `translateX(${(1 - stepsIn) * 900}px)`,
-            opacity: Math.min(1, stepsIn * 1.5),
-          }}
-        >
-          <PixelIcon name="pointer" size={70} glow={COLORS.purple} />
-          <div style={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 14, rowGap: 14}}>
-            {END_CARD_STEPS.map((step, i) => (
-              <div key={i} style={{display: 'flex', alignItems: 'center', gap: 14}}>
-                {i > 0 ? (
-                  <PixelIcon name="arrowUp" size={34} glow={COLORS.cyan} style={{transform: 'rotate(90deg)'}} />
-                ) : null}
-                <EndCardStep text={step.text} look={step.look} />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      {/* Website + Discord-Befehl */}
-      <div
-        style={{
-          marginTop: 36,
-          display: 'flex',
-          gap: 22,
-          width: 800,
-          transform: `scale(${0.7 + 0.3 * linksIn})`,
-          opacity: Math.min(1, linksIn * 1.5),
-        }}
-      >
-        {END_CARD_LINKS.map((t) => (
-          <div
-            key={t}
-            style={{
-              flex: 1,
-              textAlign: 'center',
-              padding: '20px 12px',
-              background: 'rgba(46,242,255,0.12)',
-              border: `4px solid ${COLORS.cyan}b3`,
-              boxShadow: `0 0 20px rgba(46,242,255,0.35)`,
-            }}
-          >
-            <StaticRich
-              text={t}
-              style={{
-                fontFamily: FONT_PIXEL,
-                fontWeight: 700,
-                fontSize: 42,
-                color: COLORS.white,
-                textShadow: '3px 3px 0 rgba(0,0,0,0.6)',
-                whiteSpace: 'nowrap',
-              }}
-            />
-          </div>
-        ))}
+        {/* Deine Leiste "DISCORD discord.gg/…" (ersetzt die Zeile Discord /dc -> #tickets -> Jetzt bewerben) */}
+        <EndCardImageRow img={BRAND.images.discordLink} visibleWidth={800} shineAt={40} progress={stepsIn} pulse />
       </div>
       <div
         style={{

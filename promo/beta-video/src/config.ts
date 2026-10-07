@@ -82,6 +82,14 @@ export const BRAND_IMAGES = {
   battlepass: {file: 'battlepass.png', width: 1973, height: 639, box: {x: 12, y: 16, w: 1949, h: 604}},
   /** Segment 4: schräger Stempel "KOSTENLOS!" (auf dem Battlepass) */
   kostenlos: {file: 'kostenlos.png', width: 1464, height: 825, box: {x: 22, y: 24, w: 1419, h: 772}},
+  /** Segment 6: "DISCORD BEITRETEN »" */
+  discordBeitreten: {file: 'discord-beitreten.png', width: 1970, height: 597, box: {x: 21, y: 26, w: 1926, h: 544}},
+  /** Segment 6: Ticket + "#TICKETS ÖFFNEN »" */
+  ticketsOeffnen: {file: 'tickets-oeffnen.png', width: 2012, height: 556, box: {x: 11, y: 12, w: 1993, h: 532}},
+  /** Segment 6: Rakete + "JETZT BEWERBEN »" */
+  jetztBewerben: {file: 'jetzt-bewerben.png', width: 1991, height: 492, box: {x: 15, y: 14, w: 1963, h: 464}},
+  /** End-Card: "DISCORD" + Einladungslink discord.gg/ZGAxYfG5yX */
+  discordLink: {file: 'discord-link.png', width: 2016, height: 589, box: {x: 13, y: 25, w: 1988, h: 534}},
 } satisfies Record<string, BrandImage>;
 export type BrandImageName = keyof typeof BRAND_IMAGES;
 
@@ -253,6 +261,24 @@ export const BRAND = {
     realChat: {scale: 1.4, top: 978, delay: 6},
     /** echtes Menü "Prefix wählen" vor dem ersten Banner: Skalierung, Mitte (px von oben) */
     menu: {scale: 0.62, centerY: 520},
+  },
+
+  /**
+   * Segment 6 (Discord): unten (wo früher die Untertitel standen) knallen nacheinander deine
+   * Banner rein: "DISCORD BEITRETEN" bei "Discord", "#TICKETS ÖFFNEN" bei "öffne ein Ticket",
+   * "JETZT BEWERBEN" bei "Link in der Bio". Zeiten = s ab Segmentstart.
+   */
+  cta: {
+    banners: [
+      {image: 'discordBeitreten', width: 860, cue: {at: 1.85}},
+      {image: 'ticketsOeffnen', width: 860, cue: {at: 3.7}},
+      {image: 'jetztBewerben', width: 860, cue: {at: 4.6}},
+    ] as {image: BrandImageName; width: number; cue: Cue}[],
+    centerY: 1300,
+    fromScale: 1.6,
+    slamFrames: 6,
+    shake: 9,
+    exitFrames: 8,
   },
 
   /** (nicht mehr benutzt) EXKLUSIV-Pill – ersetzt durch BRAND.rewards */

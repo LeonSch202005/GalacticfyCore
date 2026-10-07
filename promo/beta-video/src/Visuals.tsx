@@ -765,15 +765,23 @@ export const ChecklistVisual: React.FC<VProps> = ({duration, stage, caption}) =>
  * wird bei `exitAt` (Start des nächsten Banners) kleiner nach oben weggeschoben.
  * Mitte des sichtbaren Inhalts bei (cx, cy) in Stage-px.
  */
-const RewardBanner: React.FC<{i: number; start: number; exitAt: number | null; cx: number; cy: number}> = ({
-  i,
-  start,
-  exitAt,
-  cx,
-  cy,
-}) => {
+type BannerSeq = {
+  banners: {image: keyof typeof BRAND.images; width: number}[];
+  fromScale: number;
+  slamFrames: number;
+  shake: number;
+  exitFrames: number;
+};
+const RewardBanner: React.FC<{
+  i: number;
+  start: number;
+  exitAt: number | null;
+  cx: number;
+  cy: number;
+  seq?: BannerSeq;
+}> = ({i, start, exitAt, cx, cy, seq}) => {
   const frame = useCurrentFrame();
-  const R = BRAND.rewards;
+  const R = seq ?? BRAND.rewards;
   const b = R.banners[i];
   const img = BRAND.images[b.image];
   const f = frame - start;
@@ -784,7 +792,7 @@ const RewardBanner: React.FC<{i: number; start: number; exitAt: number | null; c
   const h = img.height * s;
   const ox = (img.box.x + img.box.w / 2) * s;
   const oy = (img.box.y + img.box.h / 2) * s;
-  const sl = slamAt(f, frame, {fromScale: R.fromScale, slamFrames: R.slamFrames, shake: R.shake, seed: `reward-${i}`});
+  const sl = slamAt(f, frame, {fromScale: R.fromScale, slamFrames: R.slamFrames, shake: R.shake, seed: `reward-${i}-${b.image}`});
   const tilt = (i % 2 ? 1 : -1) * 7;
   const e = g < 0 ? 0 : interpolate(g, [0, R.exitFrames], [0, 1], {...clamp, easing: Easing.out(Easing.cubic)});
   const glow = 14 + 6 * Math.sin(frame / 6) + 26 * sl.flash;
@@ -1392,6 +1400,19 @@ export const DiscordVisual: React.FC<VProps> = ({stage}) => {
           />
         </div>
       ) : null}
+      {/* Deine Banner unten (früher Untertitel-Bereich), über der Abdunklung */}
+      {BRAND.cta.banners.map((b, i) => (
+        <div key={b.image} style={{position: 'absolute', left: 0, top: 0, zIndex: 60}}>
+          <RewardBanner
+            i={i}
+            seq={BRAND.cta}
+            start={sec(b.cue && 'at' in b.cue ? b.cue.at : 0)}
+            exitAt={i < BRAND.cta.banners.length - 1 ? sec((BRAND.cta.banners[i + 1].cue as {at: number}).at) : null}
+            cx={540}
+            cy={BRAND.cta.centerY - (stage?.top ?? 0)}
+          />
+        </div>
+      ))}
     </div>
   );
 };
