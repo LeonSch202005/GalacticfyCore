@@ -17,7 +17,7 @@ export const END_CARD_SECONDS = 3;
  * Voiceover (public/voiceover.mp3, erzeugt mit scripts/make-voiceover.sh).
  * false = stummes Video. Eigene Aufnahme: einfach die MP3 ersetzen (Zeitfenster s. SEGMENTS).
  */
-export const USE_VOICEOVER = true;
+export const USE_VOICEOVER = false;
 export const VOICEOVER_FILE = 'voiceover.mp3';
 /** Lautstärke des Voiceovers (0–1). */
 export const VOICEOVER_VOLUME = 1;
@@ -70,6 +70,16 @@ export const BRAND_IMAGES = {
   menuesChecken: {file: 'menues-checken.png', width: 1900, height: 690, box: {x: 26, y: 16, w: 1853, h: 661}},
   /** Segment 3: Geldsack + Münzen + "WIRTSCHAFTS SYSTEM" */
   wirtschaft: {file: 'wirtschaftssystem.png', width: 1998, height: 672, box: {x: 21, y: 12, w: 1958, h: 628}},
+  /** Segment 4: Stern + Krone + "EXKLUSIVER PREFIX" */
+  exklusiverPrefix: {file: 'exklusiver-prefix.png', width: 1988, height: 674, box: {x: 25, y: 18, w: 1940, h: 633}},
+  /** Segment 4: Chat-Leiste "★ BETATESTER Deinname » GG!" */
+  betatesterChat: {file: 'betatester-chat.png', width: 2016, height: 475, box: {x: 36, y: 42, w: 1952, h: 393}},
+  /** Segment 4: Geschenk + "DEINE BELOHNUNG" */
+  deineBelohnung: {file: 'deine-belohnung.png', width: 1975, height: 704, box: {x: 11, y: 14, w: 1943, h: 674}},
+  /** Segment 4: Ticket "BATTLEPASS · PREMIUM" */
+  battlepass: {file: 'battlepass.png', width: 1973, height: 639, box: {x: 12, y: 16, w: 1949, h: 604}},
+  /** Segment 4: schräger Stempel "KOSTENLOS!" (auf dem Battlepass) */
+  kostenlos: {file: 'kostenlos.png', width: 1464, height: 825, box: {x: 22, y: 24, w: 1419, h: 772}},
 } satisfies Record<string, BrandImage>;
 export type BrandImageName = keyof typeof BRAND_IMAGES;
 
@@ -214,7 +224,36 @@ export const BRAND = {
     progressSize: 40,
   },
 
-  /** Segment 4: EXKLUSIV-Pill knallt beim Wort "exklusiven" über die Chatzeile [Beta Tester] */
+  /**
+   * Segment 4 (Belohnungen): oben knallen nacheinander Banner rein (wie Segment 3, immer nur einer
+   * groß): "EXKLUSIVER PREFIX" bei "exklusiven", "DEINE BELOHNUNG" bei "Belohnungen", danach das
+   * Battlepass-Ticket mit "KOSTENLOS!"-Stempel. Darunter die Chat-Leiste "BETATESTER Deinname » GG!"
+   * und klein die echte Chatzeile "[Beta Tester] Inhaber" als Beweis. Vor dem ersten Banner steht
+   * oben das echte Menü "Prefix wählen". Positionen = px im Bild (1080×1920).
+   */
+  rewards: {
+    banners: [
+      {image: 'exklusiverPrefix', width: 860, cue: {word: 'exklusiven'}},
+      {image: 'deineBelohnung', width: 800, cue: {word: 'Belohnungen'}},
+      {image: 'battlepass', width: 860, cue: {word: 'Belohnungen', offset: 0.55}},
+    ] as {image: BrandImageName; width: number; cue: Cue}[],
+    /** Mitte der Banner-Fläche (px von oben) */
+    centerY: 480,
+    fromScale: 1.7,
+    slamFrames: 6,
+    shake: 9,
+    exitFrames: 8,
+    /** "KOSTENLOS!"-Stempel: sichtbare Breite, Mitte (px), Drehung, Sekunden nach dem Battlepass-Start */
+    kostenlos: {width: 360, center: [790, 668] as [number, number], rotate: -8, after: 0.35},
+    /** Chat-Leiste: sichtbare Breite, Mitte (px von oben), Stichwort */
+    chatBar: {width: 900, centerY: 835, cue: {word: 'Betatester-Prefix'} as Cue},
+    /** echte Chatzeile darunter: Skalierung, Oberkante (px von oben), Frames nach der Chat-Leiste */
+    realChat: {scale: 1.4, top: 978, delay: 6},
+    /** echtes Menü "Prefix wählen" vor dem ersten Banner: Skalierung, Mitte (px von oben) */
+    menu: {scale: 0.62, centerY: 520},
+  },
+
+  /** (nicht mehr benutzt) EXKLUSIV-Pill – ersetzt durch BRAND.rewards */
   exklusiv: {
     cue: {word: 'exklusiven'} as Cue,
     /** Darstellungsbreite (px) */
@@ -515,6 +554,9 @@ export const DISCORD = {
   highlightAt: 0.9,
   /** Wann der Cursor "Jetzt bewerben" klickt (bei "öffne ein Ticket") */
   clickAt: 1.3,
+  /** Mausklick-Sound beim Klick (public/sfx/click.wav), Lautstärke 0–1; null = aus */
+  clickSound: 'sfx/click.wav' as string | null,
+  clickVolume: 0.9,
   /** Wann das Formular "Betatester" aufploppt */
   formAt: 1.5,
   /** Wann "Absenden" im Formular kurz markiert wird */

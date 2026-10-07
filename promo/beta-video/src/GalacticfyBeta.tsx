@@ -46,6 +46,7 @@ import {
   DiscordVisual,
   IntroVisual,
   PrefixVisual,
+  rewardStarts,
   SlotsVisual,
   TestersVisual,
 } from './Visuals';
@@ -490,8 +491,12 @@ export const GalacticfyBeta: React.FC = () => {
     const prefixSeg = SEGMENTS.find((s) => s.visual === 'prefix');
     if (prefixSeg) {
       const d = sec(prefixSeg.to - prefixSeg.from);
+      const starts = rewardStarts(d, prefixSeg.text);
+      starts.forEach((st) =>
+        list.push({frame: sec(prefixSeg.from) + st + BRAND.rewards.slamFrames, amp: BRAND.slamShake, len: 8}),
+      );
       list.push({
-        frame: sec(prefixSeg.from) + cueFrame(BRAND.exklusiv.cue, prefixSeg.text, d) + BRAND.exklusiv.slamFrames,
+        frame: sec(prefixSeg.from) + starts[starts.length - 1] + sec(BRAND.rewards.kostenlos.after) + 5,
         amp: BRAND.slamShake,
         len: 8,
       });
@@ -581,6 +586,12 @@ export const GalacticfyBeta: React.FC = () => {
 
       {/* Voiceover: public/voiceover.mp3 (USE_VOICEOVER in config.ts, false = stumm) */}
       {USE_VOICEOVER ? <Audio src={staticFile(VOICEOVER_FILE)} volume={VOICEOVER_VOLUME} /> : null}
+      {/* Mausklick-Sound beim Klick auf "Jetzt bewerben" (Discord-Segment) */}
+      {DISCORD.clickSound && discordSeg ? (
+        <Sequence from={sec(discordSeg.from + DISCORD.clickAt) - 1} durationInFrames={sec(0.5)}>
+          <Audio src={staticFile(DISCORD.clickSound)} volume={DISCORD.clickVolume} />
+        </Sequence>
+      ) : null}
     </AbsoluteFill>
   );
 };

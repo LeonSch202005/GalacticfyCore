@@ -761,172 +761,198 @@ export const ChecklistVisual: React.FC<VProps> = ({duration, stage, caption}) =>
 };
 
 /**
- * EXKLUSIV-Pill (eigene Grafik): knallt von groß auf 1 rein, Blitz + Wackeln + Druckwelle
- * beim Einschlag, danach leicht pulsierender Glow. f = Frames seit dem Stichwort.
+ * Ein Banner der Belohnungs-Folge (BRAND.rewards.banners): knallt bei `start` rein (slamAt) und
+ * wird bei `exitAt` (Start des nächsten Banners) kleiner nach oben weggeschoben.
+ * Mitte des sichtbaren Inhalts bei (cx, cy) in Stage-px.
  */
-const ExklusivPill: React.FC<{f: number}> = ({f}) => {
+const RewardBanner: React.FC<{i: number; start: number; exitAt: number | null; cx: number; cy: number}> = ({
+  i,
+  start,
+  exitAt,
+  cx,
+  cy,
+}) => {
   const frame = useCurrentFrame();
-  const P = BRAND.exklusiv;
-  const img = BRAND.images.exklusiv;
-  if (f < 0) return null;
-  const w = P.width;
-  const h = brandHeight(img, w);
-  const {slam, hit, scale, squash, sx, sy, sr, flash} = slamAt(f, frame, {
-    fromScale: P.fromScale,
-    slamFrames: P.slamFrames,
-    shake: P.shake,
-    seed: 'pill',
-  });
-  const wave = interpolate(hit, [0, 13], [0, 1], clamp);
-  const glow = 16 + 7 * Math.sin(frame / 6);
+  const R = BRAND.rewards;
+  const b = R.banners[i];
+  const img = BRAND.images[b.image];
+  const f = frame - start;
+  const g = exitAt === null ? -1 : frame - exitAt;
+  if (f < 0 || g > R.exitFrames) return null;
+  const s = b.width / img.box.w;
+  const w = img.width * s;
+  const h = img.height * s;
+  const ox = (img.box.x + img.box.w / 2) * s;
+  const oy = (img.box.y + img.box.h / 2) * s;
+  const sl = slamAt(f, frame, {fromScale: R.fromScale, slamFrames: R.slamFrames, shake: R.shake, seed: `reward-${i}`});
+  const tilt = (i % 2 ? 1 : -1) * 7;
+  const e = g < 0 ? 0 : interpolate(g, [0, R.exitFrames], [0, 1], {...clamp, easing: Easing.out(Easing.cubic)});
+  const glow = 14 + 6 * Math.sin(frame / 6) + 26 * sl.flash;
   return (
     <div
       style={{
         position: 'absolute',
-        left: 0,
-        top: 0,
+        left: cx - ox,
+        top: cy - oy,
         width: w,
         height: h,
-        // Drehpunkt unten mittig: die große Pill wächst nach oben (übers Menü), nie über die Caption
-        transformOrigin: '50% 100%',
-        transform: `translate(${sx}px, ${sy}px) rotate(${P.rotate + (1 - slam) * -9 + sr}deg) scale(${scale * (1 + squash)}, ${scale * (1 - squash)})`,
-        opacity: interpolate(f, [0, 2], [0, 1], clamp),
+        transformOrigin: `${ox}px ${oy}px`,
+        transform: [
+          `translate(${sl.sx}px, ${sl.sy - e * 170}px)`,
+          `rotate(${(1 - sl.slam) * tilt + sl.sr + e * -tilt * 0.6}deg)`,
+          `scale(${sl.scale * (1 + sl.squash) * (1 - 0.6 * e)}, ${sl.scale * (1 - sl.squash) * (1 - 0.6 * e)})`,
+        ].join(' '),
+        opacity: sl.opacity * (1 - e),
+        filter: `brightness(${1 + 1.1 * sl.flash}) drop-shadow(0 0 ${glow}px ${COLORS.purple}99) drop-shadow(0 12px 18px rgba(0,0,0,0.55))`,
+        zIndex: 2,
       }}
     >
-      {/* Druckwelle (Pill-Umriss wächst und verblasst) */}
-      {wave > 0 && wave < 1 ? (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            borderRadius: h,
-            border: `${8 * (1 - wave) + 2}px solid ${COLORS.cyan}`,
-            boxShadow: `0 0 34px ${COLORS.cyan}, inset 0 0 22px ${COLORS.purple}`,
-            transform: `scale(${1 + 0.45 * wave}, ${1 + 1.1 * wave})`,
-            opacity: 1 - wave,
-          }}
-        />
-      ) : null}
-      <div
-        style={{
-          position: 'relative',
-          filter: `brightness(${1 + 1.3 * flash}) drop-shadow(0 0 ${glow}px ${COLORS.cyan}cc) drop-shadow(0 0 ${glow * 2}px ${COLORS.purple}88) drop-shadow(0 12px 18px rgba(0,0,0,0.6))`,
-        }}
-      >
+      <div style={{position: 'relative', width: w, height: h}}>
         <BrandImg img={img} width={w} />
-        <BrightCopy
-          img={img}
-          width={w}
-          opacity={hit >= 3 && hit <= 20 ? 0.8 : 0}
-          mask={shineMask(interpolate(hit, [3, 20], [-15, 118], clamp), 8, 110)}
-          brightness={1.9}
-        />
+        <Shine img={img} width={w} f={sl.hit - 2} frames={16} opacity={0.8} />
       </div>
     </div>
   );
 };
 
-/* ---------- 4: Prefix – echtes Menü "Prefix wählen" (Kontext) + echte Chatzeile (Hauptsache) ---------- */
-export const PrefixVisual: React.FC<VProps> = ({duration, caption}) => {
+/** Frames (ab Segmentstart), an denen die Belohnungs-Banner starten (für Bild-Wackeln u. Ä.). */
+export const rewardStarts = (duration: number, caption?: string) =>
+  BRAND.rewards.banners.map((b, i) => (caption ? cueFrame(b.cue, caption, duration) : 30 + i * 25));
+
+/* ---------- 4: Belohnungen – Banner-Folge (eigene Grafiken) + Chat-Leiste + echte Chatzeile ---------- */
+export const PrefixVisual: React.FC<VProps> = ({duration, stage, caption}) => {
   const frame = useCurrentFrame();
-  const {fps} = useVideoConfig();
+  const {fps, width} = useVideoConfig();
+  const stageTop = stage?.top ?? 0;
+  const stageH = stage?.height ?? 773;
+  const Y = (abs: number) => abs - stageTop;
+  const R = BRAND.rewards;
+  const starts = rewardStarts(duration, caption);
+
+  // echtes Menü "Prefix wählen" – steht oben, bis der erste Banner reinknallt
   const menuP = spring({frame: frame - sec(PREFIX.menuAt), fps, config: {damping: 12, stiffness: 150, mass: 0.8}});
-  const chatP = spring({frame: frame - sec(PREFIX.chatAt), fps, config: {damping: 14, stiffness: 140}});
-  // Einschieben der Chatzeile OHNE Überschwingen: sonst ragt sie kurz in die rechte
-  // TikTok-Leiste und rutscht unter der (stehenden) EXKLUSIV-Pill weg
-  const chatX = spring({
-    frame: frame - sec(PREFIX.chatAt),
+  const menuOut = interpolate(frame, [starts[0], starts[0] + R.slamFrames], [1, 0], clamp);
+  const menuW = 704 * R.menu.scale;
+  const menuH = 528 * R.menu.scale;
+
+  // Chat-Leiste (eigene Grafik) + echte Chatzeile
+  const chatAt = caption ? cueFrame(R.chatBar.cue, caption, duration) : sec(PREFIX.chatAt);
+  const barX = spring({frame: frame - chatAt, fps, config: {damping: 18, stiffness: 140, overshootClamping: true}});
+  const barP = spring({frame: frame - chatAt, fps, config: {damping: 13, stiffness: 150}});
+  const realX = spring({
+    frame: frame - chatAt - R.realChat.delay,
     fps,
     config: {damping: 18, stiffness: 140, overshootClamping: true},
   });
-  const giftP = spring({frame: frame - sec(PREFIX.rewardAt), fps, config: {damping: 8, stiffness: 170}});
-  const menuScale = 0.62;
-  // Chat-Schrift im Screenshot: 1 MC-Pixel = 4 px -> bei 1,75x genau 7 px (gleichmäßige Pixel)
-  const chatScale = 1.75;
+  const barImg = BRAND.images.betatesterChat;
+  const bs = R.chatBar.width / barImg.box.w;
+  const barW = barImg.width * bs;
+  const barH = barImg.height * bs;
   const line = SCREEN_REGIONS.chatRankLine;
-  const r = SCREEN_REGIONS.chatPrefix;
-  const shineT = (frame - sec(PREFIX.chatAt) - 8) % 40;
-  const shine = interpolate(shineT, [0, 22], [-40, 140], clamp);
-  const bump = 0.05 * Math.max(0, Math.sin(Math.min(Math.PI, ((frame - sec(PREFIX.chatAt) - 6) / 12) * Math.PI)));
-  // EXKLUSIV-Pill (eigene Grafik) beim Wort "exklusiven", direkt über der Chatzeile
-  const P = BRAND.exklusiv;
-  const pillAt = caption ? cueFrame(P.cue, caption, duration) : sec(1.2);
-  const pillW = P.width;
-  const pillH = brandHeight(BRAND.images.exklusiv, pillW);
-  const chatW = line.w * chatScale;
+  const realW = line.w * R.realChat.scale;
+
+  // "KOSTENLOS!"-Stempel auf dem Battlepass
+  const k = R.kostenlos;
+  const kImg = BRAND.images.kostenlos;
+  const kStart = starts[starts.length - 1] + sec(k.after);
+  const kf = frame - kStart;
+  const ks = k.width / kImg.box.w;
+  const kW = kImg.width * ks;
+  const kH = kImg.height * ks;
+  const kox = (kImg.box.x + kImg.box.w / 2) * ks;
+  const koy = (kImg.box.y + kImg.box.h / 2) * ks;
+  const kSl = slamAt(kf, frame, {fromScale: 2.6, slamFrames: 5, shake: 10, seed: 'kostenlos'});
+
   return (
-    <div style={{position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 22}}>
-      {/* Menü als Kontext: kleiner, tritt zurück, sobald die Chatzeile kommt */}
-      <div
-        style={{
-          marginBottom: P.gapAbove,
-          transform: `translateY(${(1 - menuP) * 80}px) scale(${(0.55 + 0.45 * menuP) * (1 - 0.06 * chatP)}) rotate(${(1 - menuP) * -5}deg)`,
-          transformOrigin: 'bottom center',
-          opacity: Math.min(1, menuP * 1.6),
-          filter: `${neon(COLORS.purple, 1.2)} brightness(${1 - 0.32 * chatP}) saturate(${1 - 0.3 * chatP})`,
-        }}
-      >
-        <PrefixMenu scale={menuScale} />
-      </div>
-
-      {/* Platz für die EXKLUSIV-Pill, direkt über der Chatzeile (Abstand P.gap) */}
-      <div style={{position: 'relative', width: chatW, height: pillH + P.gap, transform: 'translateX(-20px)', zIndex: 2}}>
-        <div style={{position: 'absolute', left: chatW * P.anchorX - pillW / 2, top: 0}}>
-          <ExklusivPill f={frame - pillAt} />
+    <div style={{position: 'relative', width, height: stageH, flexShrink: 0}}>
+      {/* echtes Menü als Einstieg */}
+      {menuOut > 0 ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: width / 2 - menuW / 2,
+            top: Y(R.menu.centerY) - menuH / 2,
+            transform: `translateY(${(1 - menuP) * 80}px) scale(${(0.55 + 0.45 * menuP) * (0.7 + 0.3 * menuOut)}) rotate(${(1 - menuP) * -5}deg)`,
+            opacity: Math.min(1, menuP * 1.6) * menuOut,
+            filter: neon(COLORS.purple, 1.2),
+          }}
+        >
+          <PrefixMenu scale={R.menu.scale} />
         </div>
-      </div>
+      ) : null}
 
-      {/* Geschenk für "weitere Belohnungen" */}
-      <div
-        style={{
-          position: 'absolute',
-          right: 40,
-          top: 10,
-          transform: `scale(${giftP}) translateY(${Math.sin(frame / 7) * 8}px) rotate(${Math.sin(frame / 11) * 7}deg)`,
-        }}
-      >
-        <PixelIcon name="gift" size={150} glow={COLORS.gold} />
-      </div>
+      {/* Banner-Folge: EXKLUSIVER PREFIX -> DEINE BELOHNUNG -> BATTLEPASS */}
+      {R.banners.map((b, i) => (
+        <RewardBanner
+          key={b.image}
+          i={i}
+          start={starts[i]}
+          exitAt={i < starts.length - 1 ? starts[i + 1] : null}
+          cx={width / 2}
+          cy={Y(R.centerY)}
+        />
+      ))}
 
-      {/* Echte Chatzeile, groß: "[Beta Tester] Inhaber" (leicht nach links, weg von der TikTok-Leiste).
-          Liegt ÜBER der Pill, damit deren Schein/Schatten den cyanfarbenen Rahmen nicht anknabbert. */}
-      <div
-        style={{
-          position: 'relative',
-          zIndex: 3,
-          transform: `translateX(${(1 - chatX) * -900 - 20}px) scale(${1 + bump})`,
-          // Pop beim Ankommen wächst nach links – die rechte Kante bleibt aus der TikTok-Leiste
-          transformOrigin: '100% 50%',
-          opacity: Math.min(1, chatP * 2),
-          boxShadow: `0 0 34px ${COLORS.cyan}aa, 0 0 0 5px ${COLORS.cyan}cc, 0 14px 30px rgba(0,0,0,0.55)`,
-        }}
-      >
-        <Screen img={SCREENS.chatBetaTester} region={line} scale={chatScale}>
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              bottom: 0,
-              left: (r.x - line.x) * chatScale,
-              width: r.w * chatScale,
-              overflow: 'hidden',
-              mixBlendMode: 'screen',
-            }}
-          >
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                left: `${shine}%`,
-                width: '28%',
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)',
-                transform: 'skewX(-20deg)',
-              }}
-            />
+      {/* Stempel "KOSTENLOS!" */}
+      {kf >= 0 ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: k.center[0] - kox,
+            top: Y(k.center[1]) - koy,
+            width: kW,
+            height: kH,
+            zIndex: 4,
+            transformOrigin: `${kox}px ${koy}px`,
+            transform: `translate(${kSl.sx}px, ${kSl.sy}px) rotate(${k.rotate + (1 - kSl.slam) * -14 + kSl.sr}deg) scale(${kSl.scale * (1 + kSl.squash)}, ${kSl.scale * (1 - kSl.squash)})`,
+            opacity: kSl.opacity,
+            filter: `brightness(${1 + 1.2 * kSl.flash}) drop-shadow(0 0 ${18 + 24 * kSl.flash}px #ff5a1f99) drop-shadow(0 10px 16px rgba(0,0,0,0.6))`,
+          }}
+        >
+          <div style={{position: 'relative', width: kW, height: kH}}>
+            <BrandImg img={kImg} width={kW} />
+            <Shine img={kImg} width={kW} f={kSl.hit - 2} frames={14} opacity={0.85} />
           </div>
-        </Screen>
-      </div>
+        </div>
+      ) : null}
+
+      {/* Chat-Leiste "BETATESTER Deinname » GG!" */}
+      {frame >= chatAt ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: width / 2 - (barImg.box.x + barImg.box.w / 2) * bs,
+            top: Y(R.chatBar.centerY) - (barImg.box.y + barImg.box.h / 2) * bs,
+            width: barW,
+            height: barH,
+            zIndex: 3,
+            transform: `translateX(${(1 - barX) * -1000}px) scale(${0.9 + 0.1 * barP})`,
+            opacity: Math.min(1, barP * 2),
+            filter: `drop-shadow(0 0 ${16 + 6 * Math.sin(frame / 6)}px ${COLORS.cyan}88)`,
+          }}
+        >
+          <div style={{position: 'relative', width: barW, height: barH}}>
+            <BrandImg img={barImg} width={barW} />
+            <Shine img={barImg} width={barW} f={frame - chatAt - 10} frames={18} opacity={0.7} />
+          </div>
+        </div>
+      ) : null}
+
+      {/* echte Chatzeile "[Beta Tester] Inhaber" als Beweis */}
+      {frame >= chatAt + R.realChat.delay ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: width / 2 - realW / 2,
+            top: Y(R.realChat.top),
+            zIndex: 3,
+            transform: `translateX(${(1 - realX) * 1000}px)`,
+            boxShadow: `0 0 24px ${COLORS.cyan}88, 0 0 0 4px ${COLORS.cyan}bb, 0 10px 24px rgba(0,0,0,0.55)`,
+          }}
+        >
+          <Screen img={SCREENS.chatBetaTester} region={line} scale={R.realChat.scale} />
+        </div>
+      ) : null}
     </div>
   );
 };

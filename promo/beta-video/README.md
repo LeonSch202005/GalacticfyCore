@@ -255,6 +255,31 @@ Nach deiner eigenen Aufnahme lässt sich jeder Effekt einzeln nachschieben, ohne
 bricht das Rendern mit einer klaren Meldung ab (dann das Stichwort in `config.ts` anpassen,
 oder eine feste Zeit `{at: 1.2}` in Sekunden ab Segmentstart eintragen).
 
+### Segment 4 (11–15 s): Belohnungen
+
+Oben steht zuerst das echte Menü „Prefix wählen“, dann knallen nacheinander deine Grafiken rein
+(immer nur eine groß, die vorige wird nach oben weggeschoben):
+
+| Datei (`public/brand/`) | Wann |
+|---|---|
+| `exklusiver-prefix.png` | beim Wort „exklusiven“ |
+| `deine-belohnung.png` | beim Wort „Belohnungen“ |
+| `battlepass.png` | 0,55 s nach „Belohnungen“ |
+| `kostenlos.png` | Stempel auf dem Battlepass, 0,35 s danach |
+| `betatester-chat.png` | Chat-Leiste „BETATESTER Deinname » GG!“ bei „Betatester-Prefix“ |
+
+Darunter klein die echte Chatzeile `[Beta Tester] Inhaber` als Beweis. Alles einstellbar in
+`BRAND.rewards` (`src/config.ts`). Die alte EXKLUSIV-Pill (`exklusiv-pill.png`, `BRAND.exklusiv`)
+wird nicht mehr benutzt.
+
+## Ton
+
+Aktuell: **keine Stimme** (`USE_VOICEOVER = false`), nur ein **Mausklick** beim Klick auf
+„Jetzt bewerben“ im Discord-Teil (`public/sfx/click.wav`, mit ffmpeg erzeugt; Zeitpunkt =
+`DISCORD.clickAt`, Lautstärke `DISCORD.clickVolume`, `clickSound: null` schaltet ihn ab).
+Den Sprecher-Ton legst du selbst drüber (z. B. in TikTok/CapCut) – oder mit
+`scripts/import-voiceover.sh` importieren und `USE_VOICEOVER = true` setzen.
+
 ## Voiceover
 
 Eingebunden über `<Audio>` in `src/GalacticfyBeta.tsx`, Datei `public/voiceover.mp3`
