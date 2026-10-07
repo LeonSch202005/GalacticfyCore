@@ -14,3 +14,4 @@ out/*
 !out/galacticfy-betatester-ohne-musik.mp4
 __pycache__/
 out-share/
+!out/cover-1080x1920.png
