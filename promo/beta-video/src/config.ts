@@ -17,7 +17,9 @@ export const END_CARD_SECONDS = 3;
  * Voiceover (public/voiceover.mp3, erzeugt mit scripts/make-voiceover.sh).
  * false = stummes Video. Eigene Aufnahme: einfach die MP3 ersetzen (Zeitfenster s. SEGMENTS).
  */
-export const USE_VOICEOVER = false;
+export const USE_VOICEOVER = true;
+/** Untertitel (Kinetic Captions) anzeigen? Die Effekt-Zeiten hängen NICHT davon ab. */
+export const SHOW_CAPTIONS = false;
 export const VOICEOVER_FILE = 'voiceover.mp3';
 /** Lautstärke des Voiceovers (0–1). */
 export const VOICEOVER_VOLUME = 1;
@@ -115,7 +117,7 @@ export const BRAND = {
     /** wann es reinploppt (s ab Segmentstart) */
     enterAt: 0.03,
     /** Glow-Puls + Glanz über der "20" (beim Wort "20" der Caption) */
-    pulse: {word: '20'} as Cue,
+    pulse: {at: 1.9} as Cue,
     /** Mitte + Größe der "20" im PNG (Pixel) – dort sitzt der Glow */
     pulseCenter: [565, 465] as [number, number],
     pulseSize: [820, 560] as [number, number],
@@ -138,8 +140,8 @@ export const BRAND = {
      *  862 = kurz vor dem "&" (dessen Rand beginnt bei ≈ 867) – bis zum nächsten Wisch bleibt
      *  dort die leuchtende Wischkante stehen. */
     reveal: [
-      {toX: 862, cue: {word: 'Java'} as Cue},
-      {toX: 1975, cue: {word: 'Bedrock'} as Cue},
+      {toX: 862, cue: {at: 3.65} as Cue},
+      {toX: 1975, cue: {at: 4.15} as Cue},
     ],
     /** Dauer eines Wischs (Frames) */
     wipeFrames: 6,
@@ -151,7 +153,7 @@ export const BRAND = {
    * dockt dann rechts oben am Hero an (wie in der Original-Grafik mit Rakete).
    */
   orbit: {
-    start: 0.75,
+    start: 2.0,
     duration: 1.3,
     /** Raketenbreite (px) */
     size: 138,
@@ -186,19 +188,19 @@ export const BRAND = {
       {
         image: 'featuresTesten',
         width: 860,
-        cue: {word: 'Systeme', offset: 0.05},
+        cue: {at: 0.9},
         screen: 'quest',
         pulse: {center: [1725, 175], size: [300, 260]},
       },
       {
         image: 'bugsFinden',
         width: 860,
-        cue: {word: 'Bugs', offset: 0.4},
+        cue: {at: 1.6},
         screen: 'glitch',
         pulse: {center: [1770, 205], size: [300, 270]},
       },
-      {image: 'menuesChecken', width: 850, cue: {word: 'Menüs', offset: 0.6}, screen: 'menu'},
-      {image: 'wirtschaft', width: 850, cue: {word: 'Wirtschaft', offset: 0.8}, screen: 'economy'},
+      {image: 'menuesChecken', width: 850, cue: {at: 3.75}, screen: 'menu'},
+      {image: 'wirtschaft', width: 850, cue: {at: 5.7}, screen: 'economy'},
     ] as {
       image: BrandImageName;
       width: number;
@@ -233,9 +235,9 @@ export const BRAND = {
    */
   rewards: {
     banners: [
-      {image: 'exklusiverPrefix', width: 860, cue: {word: 'exklusiven'}},
-      {image: 'deineBelohnung', width: 800, cue: {word: 'Belohnungen'}},
-      {image: 'battlepass', width: 860, cue: {word: 'Belohnungen', offset: 0.55}},
+      {image: 'exklusiverPrefix', width: 860, cue: {at: 2.1}},
+      {image: 'deineBelohnung', width: 800, cue: {at: 4.75}},
+      {image: 'battlepass', width: 860, cue: {at: 5.45}},
     ] as {image: BrandImageName; width: number; cue: Cue}[],
     /** Mitte der Banner-Fläche (px von oben) */
     centerY: 480,
@@ -246,7 +248,7 @@ export const BRAND = {
     /** "KOSTENLOS!"-Stempel: sichtbare Breite, Mitte (px), Drehung, Sekunden nach dem Battlepass-Start */
     kostenlos: {width: 360, center: [790, 668] as [number, number], rotate: -8, after: 0.35},
     /** Chat-Leiste: sichtbare Breite, Mitte (px von oben), Stichwort */
-    chatBar: {width: 900, centerY: 835, cue: {word: 'Betatester-Prefix'} as Cue},
+    chatBar: {width: 900, centerY: 835, cue: {at: 2.9} as Cue},
     /** echte Chatzeile darunter: Skalierung, Oberkante (px von oben), Frames nach der Chat-Leiste */
     realChat: {scale: 1.4, top: 978, delay: 6},
     /** echtes Menü "Prefix wählen" vor dem ersten Banner: Skalierung, Mitte (px von oben) */
@@ -454,57 +456,57 @@ export type Segment = {
 export const SEGMENTS: Segment[] = [
   {
     from: 0,
-    to: 3,
+    to: 5.3,
     text: 'Dieser Minecraft-Server ist noch **nicht fertig** … und genau deshalb brauchen wir **dich**!',
     visual: 'intro',
     fontSize: 78,
     // Drohnenflug runter auf die Spawn-Insel, Zoom auf die Spieler am Steg
-    clip: {file: 'spawn-insel.mp4', start: 0, end: 3, zoom: [1, 1.45], focusX: [50, 53], focusY: [50, 78]},
+    clip: {file: 'spawn-insel.mp4', start: 0, end: 3.1, zoom: [1, 1.45], focusX: [50, 53], focusY: [50, 78]},
   },
   {
-    from: 3,
-    to: 6,
+    from: 5.3,
+    to: 10,
     text: 'Galacticfy sucht **20 Betatester** – für **Java und Bedrock**!',
     visual: 'testers',
     fontSize: 84,
     // Anflug über den Plaza auf das lila Portal
-    clip: {file: 'portal-plaza.mp4', start: 0, end: 3, zoom: [1.04, 1.16], focusY: [42, 48]},
+    clip: {file: 'portal-plaza.mp4', start: 0, end: 4.5, zoom: [1.04, 1.16], focusY: [42, 48]},
   },
   {
-    from: 6,
-    to: 11,
+    from: 10,
+    to: 18.85,
     text: 'Teste unsere Systeme, finde Bugs, check die Menüs und hilf uns, die Wirtschaft perfekt auszubalancieren.',
     visual: 'checklist',
     fontSize: 64,
     // Kreisflug ums Portal mit Stadt & Marktständen (6,5 s Material in 5 s = leicht schneller)
-    clip: {file: 'portal-plaza.mp4', start: 6, end: 12.5, zoom: [1.12, 1], focusY: [44, 50]},
+    clip: {file: 'portal-plaza.mp4', start: 4.6, end: 13.6, zoom: [1.12, 1], focusY: [44, 50]},
   },
   {
-    from: 11,
-    to: 15,
+    from: 18.85,
+    to: 25.3,
     text: 'Als Dankeschön bekommst du einen **exklusiven Betatester-Prefix** und weitere Belohnungen!',
     visual: 'prefix',
     fontSize: 72,
     // Haus mit Grasdach -> rein in die Bar (leicht verlangsamt)
-    clip: {file: 'see-bruecke.mp4', start: 0, end: 3.7, zoom: [1.12, 1.02], focusY: [50, 46]},
+    clip: {file: 'see-bruecke.mp4', start: 0, end: 4.3, zoom: [1.12, 1.02], focusY: [50, 46]},
   },
   {
-    from: 15,
-    to: 19,
+    from: 25.3,
+    to: 30,
     text: 'Aber Achtung: Es gibt nur **20 Plätze** – wer zuerst kommt …',
     visual: 'slots',
     fontSize: 80,
     // See mit Brücke, Flug auf den laufenden Spieler zu
-    clip: {file: 'see-bruecke.mp4', start: 4.4, end: 8.4, zoom: [1.04, 1.2], focusY: [52, 64]},
+    clip: {file: 'see-bruecke.mp4', start: 4.4, end: 8.9, zoom: [1.04, 1.2], focusY: [52, 64]},
   },
   {
-    from: 19,
-    to: 22,
+    from: 30,
+    to: 36.3,
     text: 'Komm jetzt auf unseren **Discord** und öffne ein Ticket! Link in der Bio.',
     visual: 'discord',
     fontSize: 80,
     // Zoom ins lila Portal (Übergang zur End-Card)
-    clip: {file: 'portal-plaza.mp4', start: 14.2, end: 17.2, zoom: [1.1, 1.6], focusX: [38, 27], focusY: [50, 46]},
+    clip: {file: 'portal-plaza.mp4', start: 13.8, end: 17.2, zoom: [1.1, 1.6], focusX: [38, 27], focusY: [50, 46]},
   },
 ];
 
@@ -535,9 +537,9 @@ export const PREFIX = {
 export const SLOTS = {
   total: 20,
   /** Bis wann alle 20 freien Slots aufgeploppt sind (bei "nur 20 Plätze") */
-  filledAt: 1.9,
+  filledAt: 2.2,
   /** Ab wann es rot blinkt (bei "wer zuerst kommt") */
-  alarmAt: 2.55,
+  alarmAt: 2.65,
   label: 'FREIE PLÄTZE',
   alarmLabel: 'SCHNELL SEIN!',
 };
@@ -551,19 +553,19 @@ export const SLOTS = {
  */
 export const DISCORD = {
   /** Wann "/dc" im Banner markiert wird (bei "Discord") */
-  highlightAt: 0.9,
+  highlightAt: 2.0,
   /** Wann der Cursor "Jetzt bewerben" klickt (bei "öffne ein Ticket") */
-  clickAt: 1.3,
+  clickAt: 4.0,
   /** Mausklick-Sound beim Klick (public/sfx/click.wav), Lautstärke 0–1; null = aus */
   clickSound: 'sfx/click.wav' as string | null,
   clickVolume: 0.9,
   /** Wann das Formular "Betatester" aufploppt */
-  formAt: 1.5,
+  formAt: 4.2,
   /** Wann "Absenden" im Formular kurz markiert wird */
-  submitHintAt: 2.05,
+  submitHintAt: 5.0,
   /** Wann das Popup wieder zugeht (Formular + Abdunklung + Discord-Fenster blenden aus), damit
    *  vor der End-Card noch kurz der Flug ins lila Portal zu sehen ist */
-  closeAt: 2.55,
+  closeAt: 5.75,
   /** Größe des Formulars (480×786 px Original): 1,18 = ca. 566×928 px, passt zwischen
    *  obere Safe-Zone und Caption */
   formScale: 1.18,

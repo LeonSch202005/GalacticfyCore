@@ -17,6 +17,7 @@ import {
   BrandImage,
   COLORS,
   DISCORD,
+  SHOW_CAPTIONS,
   END_CARD,
   END_CARD_CLIP,
   END_CARD_CLIP_BLUR,
@@ -157,11 +158,13 @@ const SegmentScene: React.FC<{seg: Segment}> = ({seg}) => {
           transform: `translateY(${out * 30}px)`,
         }}
       >
-        <KineticCaption
-          text={seg.text}
-          fontSize={seg.fontSize ?? 76}
-          revealFrames={captionRevealFrames(duration)}
-        />
+        {SHOW_CAPTIONS ? (
+          <KineticCaption
+            text={seg.text}
+            fontSize={seg.fontSize ?? 76}
+            revealFrames={captionRevealFrames(duration)}
+          />
+        ) : null}
       </div>
     </AbsoluteFill>
   );
