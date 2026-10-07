@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {
   AbsoluteFill,
   Audio,
@@ -10,6 +10,7 @@ import {
   useVideoConfig,
 } from 'remotion';
 import {Background, SpaceParticles} from './Background';
+import {BrandImg, BrightCopy, Impact, RocketSprite, RocketWipe, shakeAt, shineMask} from './Brand';
 import {CutFlash, FootageGrade, FootageShot} from './Footage';
 import {
   BRAND,
@@ -31,11 +32,12 @@ import {
   SegmentVisual,
   TOTAL_FRAMES,
   USE_VOICEOVER,
+  cutSeconds,
   VOICEOVER_FILE,
   VOICEOVER_VOLUME,
   sec,
 } from './config';
-import {KineticCaption, StaticRich} from './RichText';
+import {KineticCaption, StaticRich, captionRevealFrames, cueFrame} from './RichText';
 import {PixelIcon} from './PixelIcon';
 import {Screen} from './Screen';
 import {
@@ -138,7 +140,7 @@ const SegmentScene: React.FC<{seg: Segment}> = ({seg}) => {
           transform: `scale(${1 - out * 0.12}) translateY(${-out * 40}px)`,
         }}
       >
-        <Visual duration={duration} stage={{top: VISUAL_TOP, height: VISUAL_HEIGHT}} />
+        <Visual duration={duration} stage={{top: VISUAL_TOP, height: VISUAL_HEIGHT}} caption={seg.text} />
       </div>
       <div
         style={{
@@ -156,7 +158,7 @@ const SegmentScene: React.FC<{seg: Segment}> = ({seg}) => {
         <KineticCaption
           text={seg.text}
           fontSize={seg.fontSize ?? 76}
-          revealFrames={Math.min(duration * 0.6, duration - 20)}
+          revealFrames={captionRevealFrames(duration)}
         />
       </div>
     </AbsoluteFill>
@@ -225,12 +227,65 @@ const EndCardStep: React.FC<{text: string; look: 'text' | 'channel' | 'button'}>
   );
 };
 
+/** End-Card, erste Zeile: die eigene Leiste "20 TESTER GESUCHT" (sichtbare Breite = Zeilenbreite). */
+const EndCardBar: React.FC<{progress: number}> = ({progress}) => {
+  const frame = useCurrentFrame();
+  const img = BRAND.images.bar;
+  const s = BRAND.endCard.barWidth / img.box.w;
+  const w = img.width * s;
+  const shineF = frame - BRAND.endCard.barShineAt;
+  return (
+    <div
+      style={{
+        position: 'relative',
+        height: img.box.h * s,
+        transform: `translateX(${(1 - progress) * 900}px) scale(${1 + 0.012 * Math.sin(frame / 5)})`,
+        opacity: Math.min(1, progress * 1.5),
+      }}
+    >
+      <div style={{position: 'absolute', left: -img.box.x * s, top: -img.box.y * s}}>
+        <BrandImg img={img} width={w} />
+        <BrightCopy
+          img={img}
+          width={w}
+          opacity={shineF >= 0 && shineF <= 16 ? 0.75 : 0}
+          mask={shineMask(interpolate(shineF, [0, 16], [-10, 115], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}), 7)}
+          brightness={1.7}
+        />
+      </div>
+    </div>
+  );
+};
+
+/** Kleine Rakete links neben dem Logo auf der End-Card (BRAND.endCard.rocket). */
+const EndCardRocket: React.FC = () => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const pos = BRAND.endCard.rocket;
+  if (!pos) return null;
+  const p = spring({frame: frame - BRAND.endCard.rocketAt, fps, config: {damping: 11, stiffness: 150}});
+  if (p <= 0.001) return null;
+  return (
+    <RocketSprite
+      x={pos[0] + (1 - p) * -160}
+      y={pos[1] + (1 - p) * 160 + Math.sin(frame / 7) * 7}
+      size={BRAND.endCard.rocketSize * (0.6 + 0.4 * p)}
+      heading={BRAND.rocketHeading + Math.sin(frame / 9) * 4}
+      opacity={Math.min(1, p * 2)}
+      filter={`drop-shadow(0 0 16px ${COLORS.purple}) drop-shadow(0 8px 12px rgba(0,0,0,0.5))`}
+    />
+  );
+};
+
 const EndCard: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const logo = spring({frame, fps, config: {damping: 10}});
-  const stepsIn = spring({frame: frame - 6 - END_CARD.length * 5, fps, config: {damping: 13}});
-  const linksIn = spring({frame: frame - 8 - (END_CARD.length + 1) * 5, fps, config: {damping: 12}});
+  // Zeile 0 = eigene Leiste (BRAND.images.bar), danach END_CARD, dann die Bewerbungs-Zeile
+  const rows = END_CARD.length + 1;
+  const barIn = spring({frame: frame - 6, fps, config: {damping: 13}});
+  const stepsIn = spring({frame: frame - 6 - rows * 5, fps, config: {damping: 13}});
+  const linksIn = spring({frame: frame - 8 - (rows + 1) * 5, fps, config: {damping: 12}});
   return (
     <AbsoluteFill
       style={{
@@ -239,6 +294,7 @@ const EndCard: React.FC = () => {
         background: 'radial-gradient(ellipse 80% 50% at 50% 40%, rgba(91,26,168,0.45), transparent 75%)',
       }}
     >
+      <EndCardRocket />
       <div style={{transform: `scale(${logo})`}}>
         <Header scale={1.42} />
       </div>
@@ -251,8 +307,9 @@ const EndCard: React.FC = () => {
           width: 800,
         }}
       >
+        <EndCardBar progress={barIn} />
         {END_CARD.map((row, i) => {
-          const p = spring({frame: frame - 6 - i * 5, fps, config: {damping: 13}});
+          const p = spring({frame: frame - 6 - (i + 1) * 5, fps, config: {damping: 13}});
           return (
             <div
               key={i}
@@ -387,68 +444,100 @@ export const GalacticfyBeta: React.FC = () => {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
+  // Bild-Wackeln: Raketen-Übergänge + Einschlag der EXKLUSIV-Pill
+  const impacts = useMemo<Impact[]>(() => {
+    const list: Impact[] = BRAND.wipes.map((w) => ({frame: sec(cutSeconds(w.cut)) - 1, amp: BRAND.wipeShake, len: 9}));
+    const prefixSeg = SEGMENTS.find((s) => s.visual === 'prefix');
+    if (prefixSeg) {
+      const d = sec(prefixSeg.to - prefixSeg.from);
+      list.push({
+        frame: sec(prefixSeg.from) + cueFrame(BRAND.exklusiv.cue, prefixSeg.text, d) + BRAND.exklusiv.slamFrames,
+        amp: BRAND.slamShake,
+        len: 8,
+      });
+    }
+    return list;
+  }, []);
+  const shake = shakeAt(frame, impacts);
   return (
     <AbsoluteFill style={{backgroundColor: COLORS.bg}}>
-      <Background />
-
-      {/* Gameplay-Clips je Segment (Datei + Trim in config.ts) */}
-      {SEGMENTS.map((seg, i) => (
-        <Sequence
-          key={`clip-${i}`}
-          from={sec(seg.from)}
-          durationInFrames={sec(seg.to - seg.from)}
-          premountFor={30}
-          name={`Clip ${i + 1}: ${seg.clip.file}`}
-        >
-          <FootageShot clip={seg.clip} durationInFrames={sec(seg.to - seg.from)} punchIn={i > 0} />
-        </Sequence>
-      ))}
-      <Sequence durationInFrames={mainFrames} name="Farblook">
-        <FootageGrade />
-      </Sequence>
-      <Sequence from={mainFrames} durationInFrames={endFrames} premountFor={30} name="End-Card-Clip">
-        <EndCardBackdrop durationInFrames={endFrames} />
-      </Sequence>
-
-      <SpaceParticles opacity={particleOpacity} starOpacity={0.7} />
-
-      {/* Header (Logo) während der Hauptsegmente */}
+      {/* Alles Sichtbare wackelt gemeinsam (shakeAt in Brand.tsx); minimaler Zoom verdeckt die Ränder */}
       <AbsoluteFill
-        style={{
-          top: SAFE_TOP,
-          height: 120,
-          alignItems: 'center',
-          justifyContent: 'flex-start',
-          opacity: headerOpacity,
-        }}
+        style={{transform: shake.scale === 1 ? undefined : `translate(${shake.x}px, ${shake.y}px) scale(${shake.scale})`}}
       >
-        <Header />
-      </AbsoluteFill>
+        <Background />
 
-      {SEGMENTS.map((seg, i) => (
-        <Sequence
-          key={i}
-          from={sec(seg.from)}
-          durationInFrames={sec(seg.to - seg.from)}
-          name={`${i + 1}: ${seg.visual}`}
+        {/* Gameplay-Clips je Segment (Datei + Trim in config.ts) */}
+        {SEGMENTS.map((seg, i) => (
+          <Sequence
+            key={`clip-${i}`}
+            from={sec(seg.from)}
+            durationInFrames={sec(seg.to - seg.from)}
+            premountFor={30}
+            name={`Clip ${i + 1}: ${seg.clip.file}`}
+          >
+            <FootageShot clip={seg.clip} durationInFrames={sec(seg.to - seg.from)} punchIn={i > 0} />
+          </Sequence>
+        ))}
+        <Sequence durationInFrames={mainFrames} name="Farblook">
+          <FootageGrade />
+        </Sequence>
+        <Sequence from={mainFrames} durationInFrames={endFrames} premountFor={30} name="End-Card-Clip">
+          <EndCardBackdrop durationInFrames={endFrames} />
+        </Sequence>
+
+        <SpaceParticles opacity={particleOpacity} starOpacity={0.7} />
+
+        {/* Header (Logo) während der Hauptsegmente */}
+        <AbsoluteFill
+          style={{
+            top: SAFE_TOP,
+            height: 120,
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            opacity: headerOpacity,
+          }}
         >
-          <SegmentScene seg={seg} />
-        </Sequence>
-      ))}
+          <Header />
+        </AbsoluteFill>
 
-      <Sequence from={mainFrames} durationInFrames={endFrames} name="End-Card">
-        <EndCard />
-      </Sequence>
+        {SEGMENTS.map((seg, i) => (
+          <Sequence
+            key={i}
+            from={sec(seg.from)}
+            durationInFrames={sec(seg.to - seg.from)}
+            name={`${i + 1}: ${seg.visual}`}
+          >
+            <SegmentScene seg={seg} />
+          </Sequence>
+        ))}
 
-      {/* Blitz-Übergänge an den Schnitten */}
-      {SEGMENTS.slice(1).map((seg, i) => (
-        <Sequence key={`flash-${i}`} from={sec(seg.from)} durationInFrames={10} name="Flash">
-          <CutFlash strength={0.42} length={7} />
+        <Sequence from={mainFrames} durationInFrames={endFrames} name="End-Card">
+          <EndCard />
         </Sequence>
-      ))}
-      <Sequence from={mainFrames} durationInFrames={14} name="Flash End-Card">
-        <CutFlash color={COLORS.purple} strength={0.9} length={12} />
-      </Sequence>
+
+        {/* Blitz-Übergänge an den Schnitten */}
+        {SEGMENTS.slice(1).map((seg, i) => (
+          <Sequence key={`flash-${i}`} from={sec(seg.from)} durationInFrames={10} name="Flash">
+            <CutFlash strength={0.42} length={7} />
+          </Sequence>
+        ))}
+        <Sequence from={mainFrames} durationInFrames={14} name="Flash End-Card">
+          <CutFlash color={COLORS.purple} strength={0.9} length={12} />
+        </Sequence>
+
+        {/* Raketen-Übergänge (eigene Grafik rocket.png), mittig über dem Schnitt */}
+        {BRAND.wipes.map((w, i) => (
+          <Sequence
+            key={`wipe-${i}`}
+            from={sec(cutSeconds(w.cut)) - Math.round(w.frames / 2)}
+            durationInFrames={w.frames + 6}
+            name={`Raketen-Übergang ${i + 1}`}
+          >
+            <RocketWipe wipe={w} />
+          </Sequence>
+        ))}
+      </AbsoluteFill>
 
       {/* Voiceover: public/voiceover.mp3 (USE_VOICEOVER in config.ts, false = stumm) */}
       {USE_VOICEOVER ? <Audio src={staticFile(VOICEOVER_FILE)} volume={VOICEOVER_VOLUME} /> : null}

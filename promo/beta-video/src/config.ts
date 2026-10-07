@@ -22,11 +22,136 @@ export const VOICEOVER_FILE = 'voiceover.mp3';
 /** Lautstärke des Voiceovers (0–1). */
 export const VOICEOVER_VOLUME = 1;
 
+/** Rechteck in Pixeln innerhalb eines Bildes (für Teil-Ausschnitte / Markierungen). */
+export type Region = {x: number; y: number; w: number; h: number};
+
+/**
+ * Ein eigenes Grafik-PNG (public/brand/) mit Originalgröße in Pixeln.
+ * box = sichtbarer Inhalt im PNG (ohne transparenten Rand / weichen Glow) – danach wird
+ * ausgerichtet, damit z. B. die Leiste auf der End-Card genau so breit ist wie die Zeilen.
+ */
+export type BrandImage = {file: string; width: number; height: number; box: Region};
+
+/**
+ * Stichwort für einen Effekt: startet, wenn dieses Wort der Segment-Caption reinploppt
+ * (+ offset Sekunden) – so bleibt alles synchron zur Caption bzw. zum Voiceover.
+ * Alternativ eine feste Zeit `at` (Sekunden ab Segmentstart).
+ */
+export type Cue = {word: string; offset?: number} | {at: number};
+
+// ------------------------------------------------------------
+//  Marke + EIGENE GRAFIKEN (liegen in public/brand/)
+// ------------------------------------------------------------
+//  Transparente PNGs, aus den Original-Grafiken freigestellt. KEIN Pixel-Art -> werden
+//  immer weich skaliert. Austauschen: neues PNG (gleicher Dateiname oder neuer Name in
+//  `images`) + width/height/box anpassen. Positionen in Bild-Pixeln (1080×1920),
+//  Zeiten in Sekunden.
 export const BRAND = {
   /** nur Info – das Logo im Video ist der echte Banner-Screenshot SCREENS.logo */
   name: 'GALACTICFY',
   /** Sticker neben dem Logo */
   tag: 'BETA',
+
+  /** Ordner unter public/ */
+  dir: 'brand',
+  images: {
+    /** Planet + "20" + "TESTER GESUCHT" (Segment 2) */
+    hero: {file: 'hero-20-tester.png', width: 1123, height: 1156, box: {x: 51, y: 99, w: 1014, h: 1045}},
+    /** Neon-Pill "★ EXKLUSIV" (Segment 4) */
+    exklusiv: {file: 'exklusiv-pill.png', width: 1900, height: 517, box: {x: 11, y: 10, w: 1877, h: 496}},
+    /** Rakete, zeigt nach rechts oben (Übergänge, Orbit in Segment 2, End-Card) */
+    rocket: {file: 'rocket.png', width: 1045, height: 1131, box: {x: 10, y: 11, w: 1023, h: 1108}},
+    /** Leuchtleiste "🚀 20 TESTER GESUCHT" (End-Card, erste Zeile) */
+    bar: {file: 'bar-20-tester.png', width: 1574, height: 304, box: {x: 44, y: 44, w: 1485, h: 215}},
+  },
+  /** Flugrichtung der Rakete im PNG (Grad, 0 = nach rechts, −90 = nach oben) */
+  rocketHeading: -48,
+
+  /** Segment 2: das "20 TESTER GESUCHT"-Hero groß zwischen Logo und Caption */
+  hero: {
+    /** Darstellungsbreite des PNGs (px); sichtbarer Inhalt ≈ 90 % davon */
+    width: 760,
+    /** Oberkante des sichtbaren Inhalts (Planet) im Bild – Logo endet bei ≈ 300 */
+    top: 312,
+    /** wann es reinploppt (s ab Segmentstart) */
+    enterAt: 0.03,
+    /** Glow-Puls + Glanz über der "20" (beim Wort "20" der Caption) */
+    pulse: {word: '20'} as Cue,
+    /** Mitte + Größe der "20" im PNG (Pixel) – dort sitzt der Glow */
+    pulseCenter: [565, 465] as [number, number],
+    pulseSize: [820, 560] as [number, number],
+    /** Leerlauf: Auf/Ab in px */
+    float: 8,
+  },
+  /** Segment 2: Oberkante der JAVA-/BEDROCK-Badges (unter dem Hero, über der Caption) */
+  editionsTop: 1034,
+  /**
+   * Segment 2: Rakete fliegt einmal um den Planeten (hinten kleiner, vorne größer) und
+   * dockt dann rechts oben am Hero an (wie in der Original-Grafik mit Rakete).
+   */
+  orbit: {
+    start: 0.75,
+    duration: 1.3,
+    /** Raketenbreite (px) */
+    size: 150,
+    /** Mittelpunkt (Bild-px), Radien (px), Neigung (Grad) – folgt dem Ring der Grafik */
+    center: [540, 545] as [number, number],
+    radius: [405, 118] as [number, number],
+    tilt: -13,
+    /** Andock-Position (Mitte der Rakete, Bild-px) + Breite */
+    dock: [842, 372] as [number, number],
+    dockSize: 128,
+    /** Sekunden für das Andocken nach dem Orbit */
+    dockDuration: 0.3,
+  },
+
+  /** Segment 4: EXKLUSIV-Pill knallt beim Wort "exklusiven" über die Chatzeile [Beta Tester] */
+  exklusiv: {
+    cue: {word: 'exklusiven'} as Cue,
+    /** Darstellungsbreite (px) */
+    width: 620,
+    /** Mitte der Pill über der Chatzeile: 0 = linker Rand, 0.5 = Mitte. 0.37 = bei 620 px Breite
+     *  linksbündig mit der Chatzeile (über "[Beta Tester]") */
+    anchorX: 0.37,
+    /** Abstand der Pill-Unterkante zur Chatzeile (px). Nicht zu klein, sonst verdeckt die
+     *  (schräge, links tiefere) Pill den Rahmen bzw. die Oberkanten von "[Beta Tester]". */
+    gap: 18,
+    /** Abstand zum Menü darüber (px) */
+    gapAbove: 24,
+    /** leichte Schräglage (Grad) */
+    rotate: -2,
+    /** Einschlag: Start-Skalierung (wächst nach oben, nie über die Caption), Dauer (Frames),
+     *  Wackeln (px) */
+    fromScale: 2.8,
+    slamFrames: 6,
+    shake: 12,
+  },
+
+  /**
+   * Raketen-Übergänge: die Rakete schießt in ≤ 12 Frames diagonal durchs Bild (mit
+   * Leuchtspur), mittig über einem Schnitt; das Bild wackelt kurz.
+   * cut = Schnitt VOR Segment Nr. cut+1 (1 = Intro -> Segment 2) oder 'end' = zur End-Card –
+   * die Zeit kommt aus SEGMENTS, wandert also beim Umtimen mit.
+   * from/to = Mitte der Rakete (Bild-px) am Anfang/Ende (über der Caption), size = Breite (px).
+   */
+  wipes: [
+    {cut: 1, frames: 12, from: [-360, 1060], to: [1420, -440], size: 400},
+    {cut: 'end', frames: 12, from: [-380, 1180], to: [1400, -520], size: 430},
+  ] as {cut: number | 'end'; frames: number; from: [number, number]; to: [number, number]; size: number}[],
+  /** Wackel-Stärke (px) bei den Raketen-Übergängen / beim EXKLUSIV-Einschlag */
+  wipeShake: 16,
+  slamShake: 7,
+
+  /** End-Card: Leiste als erste Zeile (sichtbare Breite = Zeilenbreite) + kleine Rakete am Logo */
+  endCard: {
+    barWidth: 800,
+    /** Glanz läuft über die Leiste (Frames ab End-Card-Start) */
+    barShineAt: 26,
+    rocketSize: 118,
+    /** Mitte der kleinen Rakete links neben dem Logo (Bild-px); null = keine Rakete */
+    rocket: [126, 392] as [number, number] | null,
+    rocketAt: 12,
+  },
 };
 
 export type SegmentVisual =
@@ -43,8 +168,6 @@ export type SegmentVisual =
 /** Ordner unter public/, in dem die Screenshot-Ausschnitte liegen. */
 export const SCREEN_DIR = 'screens';
 
-/** Rechteck in Pixeln innerhalb eines Screenshots (für Teil-Ausschnitte / Markierungen). */
-export type Region = {x: number; y: number; w: number; h: number};
 /**
  * Ein Screenshot-Ausschnitt: Datei + Originalgröße in Pixeln.
  * smooth = kein Pixel-Art (z. B. Discord-Screenshots): immer weich skalieren statt "pixelated".
@@ -236,13 +359,14 @@ export const INTRO = {
   percent: 73,
 };
 
-/** Segment 2: "20 BETATESTER" + Editionen */
-export const TESTERS = {
-  count: '20',
-  label: 'BETATESTER',
+/**
+ * Segment 2: groß die eigene Grafik "20 TESTER GESUCHT" (BRAND.hero), darunter die
+ * Editionen als Badges – jede ploppt beim gesprochenen Wort rein (cue).
+ */
+export const TESTERS: {editions: {label: string; color: string; cue: Cue}[]} = {
   editions: [
-    {label: 'JAVA', color: '#e8762b'},
-    {label: 'BEDROCK', color: '#3aa655'},
+    {label: 'JAVA', color: '#e8762b', cue: {word: 'Java'}},
+    {label: 'BEDROCK', color: '#3aa655', cue: {word: 'Bedrock'}},
   ],
 };
 
@@ -319,9 +443,11 @@ export const DISCORD = {
   formDim: 0.72,
 };
 
-/** End-Card */
+/**
+ * End-Card-Zeilen mit Icon. Die erste Zeile "20 TESTER GESUCHT" ist die eigene Leiste
+ * BRAND.images.bar (siehe BRAND.endCard) und steht deshalb nicht hier.
+ */
 export const END_CARD: {icon: 'rocket' | 'gamepad' | 'gift' | 'pointer'; text: string}[] = [
-  {icon: 'rocket', text: '**20 BETATESTER** GESUCHT'},
   {icon: 'gamepad', text: '**Java** & **Bedrock**'},
   {icon: 'gift', text: 'Prefix **[Beta Tester]** + Belohnungen'},
 ];
@@ -368,3 +494,6 @@ export const FONT_PIXEL =
 export const MAIN_SECONDS = SEGMENTS[SEGMENTS.length - 1].to;
 export const TOTAL_FRAMES = Math.round((MAIN_SECONDS + END_CARD_SECONDS) * FPS);
 export const sec = (s: number) => Math.round(s * FPS);
+/** Zeitpunkt (s) eines Schnitts: vor Segment Nr. cut+1 bzw. 'end' = Beginn der End-Card. */
+export const cutSeconds = (cut: number | 'end') =>
+  cut === 'end' ? MAIN_SECONDS : SEGMENTS[Math.max(1, Math.min(cut, SEGMENTS.length - 1))].from;

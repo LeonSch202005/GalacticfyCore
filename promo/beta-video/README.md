@@ -8,6 +8,9 @@ Galacticfy-Look (Lila-Stich, Sterne/Pixel-Partikel, Neon-Captions, Glas-Panels) 
 **echte Screenshots** (`public/screens/`): Logo, Menü „Prefix wählen“, Chat mit
 `[Beta Tester]`, Scoreboard, Bossbar-Quest, das Discord-Banner mit `/dc` – und der echte
 Bewerbungsweg auf dem Discord (Kanal `#tickets` → „Jetzt bewerben“ → Formular „Betatester“).
+Die großen Hingucker sind **deine eigenen Grafiken** (`public/brand/`): das „20 TESTER
+GESUCHT“-Hero, die EXKLUSIV-Pill, die Rakete und die Leuchtleiste – siehe
+[Eigene Grafiken](#eigene-grafiken-publicbrand).
 
 Fertige Videos:
 
@@ -50,13 +53,16 @@ Headless-Browser. Pfad dort bei Bedarf anpassen.
 - `SEGMENTS` – die sechs Caption-Abschnitte mit `from`/`to` in Sekunden.
   `**Wort**` wird in Neon-Cyan hervorgehoben. `fontSize` optional pro Segment.
 - `clip` je Segment – welcher Gameplay-Clip dahinter läuft (siehe unten).
+- `BRAND` – Logo-Sticker („BETA“) und alles zu den **eigenen Grafiken** (Dateien, Größen,
+  Positionen, Zeiten), siehe [Eigene Grafiken](#eigene-grafiken-publicbrand).
 - `INTRO`, `TESTERS`, `CHECKLIST`, `PREFIX`, `SLOTS`, `DISCORD` – Inhalte und
   Einsatzzeitpunkte (`at`, `chatAt`, `clickAt`, `formAt` … in Sekunden ab Segmentstart,
   passend zum gesprochenen Wort) der animierten Visuals. `DISCORD` enthält außerdem Größe/
   Position des Formulars (`formScale`, `formTop`), die Abdunklung dahinter (`formDim`) und
   wann das Popup wieder zugeht (`closeAt`).
 - `SCREENS` / `SCREEN_REGIONS` / `SCREEN_OUTLINES` – die Screenshot-Ausschnitte (siehe unten).
-- `END_CARD` (Zeilen mit Icon) / `END_CARD_STEPS` (hervorgehobene Zeile „Discord /dc →
+- `END_CARD` (Zeilen mit Icon; die erste Zeile „20 TESTER GESUCHT“ ist deine Leiste aus
+  `BRAND`) / `END_CARD_STEPS` (hervorgehobene Zeile „Discord /dc →
   #tickets → Jetzt bewerben“) / `END_CARD_LINKS` (galacticfy.de, Discord: /dc) /
   `END_CARD_FOOTER` („(Link in Bio)“) / `END_CARD_SECONDS` – Abschlusskarte.
 - `USE_VOICEOVER` / `VOICEOVER_FILE` / `VOICEOVER_VOLUME` – Voiceover (siehe unten).
@@ -154,6 +160,58 @@ bei `SCREENS` Dateiname + `width`/`height` (Pixel) anpassen. Teil-Ausschnitte un
 Markierungsrahmen (z. B. „Erste Schritte (3/8)“, der Rahmen um „/20“ oder „/dc“)
 stehen als Pixel-Rechtecke in `SCREEN_REGIONS`, Umriss-Masken (Discord-Banner) als Polygon
 in `SCREEN_OUTLINES` – beides muss bei einem neuen Bild ggf. nachgezogen werden. Wichtig: im Ausschnitt dürfen keine Windows-Benachrichtigungen o. Ä. sein.
+
+## Eigene Grafiken (`public/brand/`)
+
+Deine Marken-Grafiken liegen als **transparente PNGs** in `public/brand/` (aus den
+Original-Grafiken mit schwarzem Hintergrund freigestellt, Originalauflösung). Sie sind kein
+Pixel-Art und werden immer **weich skaliert** (nie `pixelated`). Eingebunden über
+`src/Brand.tsx`; alle Dateien, Größen, Positionen und Zeiten stehen im Block `BRAND` in
+`src/config.ts`.
+
+| Datei | Inhalt | Wo im Video (Zeiten im fertigen Video) |
+|---|---|---|
+| `hero-20-tester.png` | Planet + „20“ + „TESTER GESUCHT“ | Segment 2 (3–6 s), groß zwischen Logo und Caption (760 px breit): ploppt bei 3,0 s mit Federung + leichter Drehung rein, **Glow-Puls + Glanz auf der „20“ beim Wort „20“** (3,4 s), schwebt danach sanft. Darunter JAVA (4,2 s) und BEDROCK (4,6 s) – jeweils beim gesprochenen Wort |
+| `rocket.png` | Cartoon-Rakete | **Übergänge** 1→2 (2,8–3,2 s) und 6→End-Card (21,8–22,2 s): schießt in 12 Frames diagonal durchs Bild (über der Caption), mit Leuchtspur + Nachzieh-Kopien, das Bild wackelt kurz. In Segment 2 fliegt sie einmal um den Planeten (3,75–5,05 s, hinten kleiner/vorne größer) und dockt rechts oben am Hero an. Auf der End-Card klein links neben dem Logo |
+| `exklusiv-pill.png` | Neon-Pill „★ EXKLUSIV“ | Segment 4 (11–15 s): knallt **beim Wort „exklusiven“** (12,2 s) von groß auf normal direkt über die echte Chatzeile „[Beta Tester] Inhaber“ (linksbündig mit der Zeile, über „[Beta Tester]“), Einschlag bei 12,4 s mit Blitz, Wackeln, Druckwelle und Glanz; die Chatzeile schiebt sich bei „Betatester-Prefix“ (12,45 s) darunter |
+| `bar-20-tester.png` | Leuchtleiste „🚀 20 TESTER GESUCHT“ | End-Card (22–25 s): erste Zeile (statt der alten Text-Zeile), so breit wie die anderen Zeilen, gleitet bei 22,2 s rein, Glanz bei ≈ 22,9 s |
+
+**Grafik austauschen:**
+
+1. Neues PNG **mit Transparenz** (kein schwarzer Hintergrund) nach `public/brand/` legen –
+   am einfachsten unter dem alten Dateinamen.
+2. In `src/config.ts` unter `BRAND.images` `width`/`height` (Pixel) anpassen und `box` = der
+   sichtbare Inhalt im PNG (ohne transparenten Rand/weichen Schein; im Zweifel
+   `{x: 0, y: 0, w: width, h: height}`). Danach wird ausgerichtet – z. B. ist die Leiste auf
+   der End-Card genau so breit wie die Zeilen darunter.
+3. Bei einer neuen Rakete `BRAND.rocketHeading` setzen: Flugrichtung im Bild in Grad
+   (0 = nach rechts, −90 = nach oben; die jetzige zeigt mit −48° nach rechts oben).
+4. Bei einem neuen Hero `BRAND.hero.pulseCenter`/`pulseSize` (wo die „20“ im PNG sitzt) und
+   ggf. `BRAND.orbit.dock` (Andockpunkt der Rakete) prüfen.
+
+**Größe/Position/Timing ändern** – alles in `BRAND`:
+
+- `hero` – Breite, Oberkante, Einsatz, `pulse` (Stichwort für den Glow-Puls), `float`;
+  `editionsTop` – Höhe der JAVA/BEDROCK-Badges (die Stichwörter stehen in `TESTERS`).
+- `orbit` – Start, Dauer, Größe, Ellipse (`center`/`radius`/`tilt`) und Andockpunkt.
+- `exklusiv` – `cue` (Stichwort), Breite, `anchorX` (0,37 = linksbündig mit der Chatzeile, über
+  „[Beta Tester]“; 0,5 = mittig über der Chatzeile), `gap`, Schräglage, Einschlag (`fromScale`, `slamFrames`, `shake`).
+- `wipes` – die Raketen-Übergänge: `cut` = an welchem Schnitt (`1` = Intro → Segment 2,
+  `2` = Segment 2 → 3, … `'end'` = zur End-Card), `frames` (≤ 12), `from`/`to` (Bild-px),
+  `size`; `wipeShake`/`slamShake` = Wackel-Stärke. Einen Übergang löschen = Zeile entfernen,
+  einen weiteren Schnitt = Zeile kopieren und `cut` ändern.
+- `endCard` – Breite der Leiste, Glanz-Zeitpunkt, kleine Rakete (`rocket: null` = keine).
+
+**Stichwörter (`cue`):** Effekte wie die EXKLUSIV-Pill, der „20“-Puls oder die JAVA/BEDROCK-Badges
+warten auf ein Wort der Caption (`{word: 'exklusiven'}`) und kommen genau dann, wenn dieses
+Wort in der Caption reinploppt. Ändern sich Caption oder Timing, wandern sie automatisch mit.
+Achtung: Die Caption zeigt jeden Satz in den ersten ~60 % seines Zeitfensters – wer den Satz
+übers ganze Fenster spricht, sagt die Wörter etwas später. In der aktuellen TTS-Spur kommen
+„20“, „Java“ und „Bedrock“ (Segment 2) ≈ 0,6–1 s nach ihrem Effekt, „exklusiven“ (Segment 4)
+≈ 0,2 s danach. Nach deiner eigenen Aufnahme lässt sich jeder Effekt einzeln nachschieben, ohne
+die Caption zu ändern: `{word: 'Java', offset: 0.8}` (Sekunden, positiv = später). Steht das Wort nicht mehr in der Caption,
+bricht das Rendern mit einer klaren Meldung ab (dann das Stichwort in `config.ts` anpassen,
+oder eine feste Zeit `{at: 1.2}` in Sekunden ab Segmentstart eintragen).
 
 ## Voiceover
 
@@ -276,7 +334,8 @@ Weicht das Timing ab: `from`/`to` der `SEGMENTS` an die Sätze anpassen (Reihenf
 beibehalten, End-Card ≥ 2,5 s) – die Clip-Ausschnitte (`clip.start`/`clip.end`) mitziehen,
 sonst laufen sie schneller/langsamer. Die Einsatzzeitpunkte (`CHECKLIST[].at`,
 `PREFIX.chatAt`, `SLOTS.alarmAt`, `DISCORD.clickAt`/`formAt`/`closeAt` …) ggf. auf die neuen Wörter
-legen. Lautstärke bei Bedarf über `VOICEOVER_VOLUME` (0–1).
+legen – die Effekte der eigenen Grafiken (Stichwörter `cue`, Raketen-Übergänge an den
+Schnitten) wandern von selbst mit. Lautstärke bei Bedarf über `VOICEOVER_VOLUME` (0–1).
 
 ## Dateien
 
@@ -284,13 +343,15 @@ legen. Lautstärke bei Bedarf über `VOICEOVER_VOLUME` (0–1).
 src/config.ts          Texte, Timings, Farben, Clip- und Screenshot-Zuordnung
 src/GalacticfyBeta.tsx Haupt-Komposition (Layout, Segmente, End-Card, Audio)
 src/Footage.tsx        Gameplay-Clips (Zuschnitt, Zoom), Farblook, Blitz-Übergänge
-src/Visuals.tsx        Animierte Visuals je Segment (auf Glas-Panels, mit Screenshots)
+src/Visuals.tsx        Animierte Visuals je Segment (auf Glas-Panels, mit Screenshots + eigenen Grafiken)
+src/Brand.tsx          Eigene Grafiken: Bild, Glow/Glanz, Rakete, Raketen-Übergang, Bild-Wackeln
 src/Screen.tsx         Screenshot-Ausschnitt (<Img>, pixelated bzw. smooth) + Markierungsrahmen
 src/RichText.tsx       Kinetische Captions mit Highlight-Wörtern
 src/Background.tsx     Sternenhimmel, Nebel, Pixel-Block-Partikel
 src/PixelIcon.tsx      Pixel-Art-Icons (Rakete, Controller, Geschenk, ...)
 public/clips/          Gameplay-Aufnahmen (werden mit eingecheckt)
 public/screens/        Ausschnitte aus echten Ingame- und Discord-Screenshots (PNG)
+public/brand/          Eigene Grafiken (transparente PNGs: Hero, EXKLUSIV-Pill, Rakete, Leiste)
 public/voiceover.mp3   Voiceover (aktuell TTS; eigene Aufnahme -> import-voiceover.sh)
 scripts/               import-voiceover.sh (eigene Aufnahme importieren),
                        make-voiceover.sh / .py (TTS-Generator)

@@ -1,6 +1,7 @@
 import React from 'react';
 import {Easing, interpolate, random, spring, useCurrentFrame, useVideoConfig} from 'remotion';
 import {
+  BRAND,
   BUG_STICKER,
   CHECKLIST,
   ChecklistScreen,
@@ -17,11 +18,16 @@ import {
   TESTERS,
   sec,
 } from './config';
+import {BrandImg, BrightCopy, RocketSprite, brandHeight, shineMask, wrapDeg} from './Brand';
 import {PixelIcon} from './PixelIcon';
+import {cueFrame} from './RichText';
 import {Highlight, Screen} from './Screen';
 
-/** stage = Visual-Bereich im Bild (px): top/height (aus GalacticfyBeta.tsx) */
-type VProps = {duration: number; stage?: {top: number; height: number}};
+/**
+ * duration = Segment-Länge in Frames, stage = Visual-Bereich im Bild (px): top/height,
+ * caption = Text der Segment-Caption (für Effekte, die auf ein gesprochenes Wort warten).
+ */
+type VProps = {duration: number; stage?: {top: number; height: number}; caption?: string};
 
 const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 
@@ -165,11 +171,12 @@ export const IntroVisual: React.FC<VProps> = ({duration}) => {
 };
 
 /* ---------- 2: 20 Betatester – Java & Bedrock ---------- */
-const EditionBadge: React.FC<{label: string; color: string; from: number; delay: number}> = ({
+const EditionBadge: React.FC<{label: string; color: string; from: number; delay: number; size?: number}> = ({
   label,
   color,
   from,
   delay,
+  size = 38,
 }) => {
   const p = usePop(delay, 13);
   return (
@@ -179,9 +186,9 @@ const EditionBadge: React.FC<{label: string; color: string; from: number; delay:
         opacity: Math.min(1, p * 1.5),
         fontFamily: FONT_HEAVY,
         fontWeight: 900,
-        fontSize: 38,
+        fontSize: size,
         color: '#fff',
-        padding: '12px 22px',
+        padding: `${Math.round(size * 0.32)}px ${Math.round(size * 0.6)}px`,
         background: `linear-gradient(180deg, ${color}, rgba(0,0,0,0.5))`,
         border: `4px solid ${color}`,
         boxShadow: `0 0 24px ${color}, inset -6px -6px 0 rgba(0,0,0,0.3)`,
@@ -194,58 +201,163 @@ const EditionBadge: React.FC<{label: string; color: string; from: number; delay:
   );
 };
 
-export const TestersVisual: React.FC<VProps> = () => {
+/** Rakete fliegt einmal um den Planeten des Heros und dockt rechts oben an (BRAND.orbit). */
+const useOrbitRocket = () => {
   const frame = useCurrentFrame();
-  const panel = usePop(0, 13);
-  const p = usePop(3, 9);
-  const glow = 22 + Math.sin(frame / 5) * 9;
+  const O = BRAND.orbit;
+  const of = frame - sec(O.start);
+  if (of < 0) return null;
+  const oDur = sec(O.duration);
+  const t = Easing.inOut(Easing.sin)(Math.min(1, of / oDur));
+  // oben (leicht rechts, hinter dem Planeten) -> rechts -> vorne unten -> links -> hinten -> rechts oben
+  const phi0 = -Math.PI / 2 + 0.35;
+  const phi1 = 2 * Math.PI - Math.PI / 4;
+  const phi = phi0 + (phi1 - phi0) * t;
+  const tilt = (O.tilt * Math.PI) / 180;
+  const rot = (x: number, y: number) => [x * Math.cos(tilt) - y * Math.sin(tilt), x * Math.sin(tilt) + y * Math.cos(tilt)];
+  const [ex, ey] = rot(O.radius[0] * Math.cos(phi), O.radius[1] * Math.sin(phi));
+  const [vx, vy] = rot(-O.radius[0] * Math.sin(phi), O.radius[1] * Math.cos(phi));
+  const depth = Math.sin(phi); // −1 = hinten, 1 = vorne
+  const orbitX = O.center[0] + ex;
+  const orbitY = O.center[1] + ey;
+  const orbitHeading = (Math.atan2(vy, vx) * 180) / Math.PI;
+  const orbitSize = O.size * (1 + 0.22 * depth);
+  // Andocken
+  const d = Easing.inOut(Easing.cubic)(interpolate(of, [oDur, oDur + sec(O.dockDuration)], [0, 1], clamp));
+  const docked = of >= oDur + sec(O.dockDuration);
+  const idle = docked ? Math.sin((of - oDur) / 9) : 0;
+  return {
+    x: orbitX + (O.dock[0] - orbitX) * d,
+    y: orbitY + (O.dock[1] - orbitY) * d + idle * 5,
+    size: orbitSize + (O.dockSize - orbitSize) * d,
+    heading: orbitHeading + wrapDeg(BRAND.rocketHeading - orbitHeading) * d + idle * 2.5,
+    behind: depth < 0 && d < 0.35,
+    opacity: interpolate(of, [0, 5], [0, 1], clamp),
+  };
+};
+
+/**
+ * Segment 2: die eigene Grafik "20 TESTER GESUCHT" (BRAND.images.hero) groß zwischen Logo und
+ * Caption – ploppt mit Federung + leichter Drehung rein, Glow-Puls + Glanz auf der "20" beim
+ * Wort "20", schwebt danach sanft. Darunter JAVA/BEDROCK (je beim gesprochenen Wort).
+ * Alle Positionen in Bild-Pixeln (1080×1920).
+ */
+export const TestersVisual: React.FC<VProps> = ({duration, stage, caption}) => {
+  const frame = useCurrentFrame();
+  const {fps, width} = useVideoConfig();
+  const stageTop = stage?.top ?? 0;
+  const stageH = stage?.height ?? 773;
+  const Y = (abs: number) => abs - stageTop;
+
+  const H = BRAND.hero;
+  const img = BRAND.images.hero;
+  const s = H.width / img.width;
+  const heroH = brandHeight(img, H.width);
+  const box = img.box;
+  // sichtbaren Inhalt (nicht das PNG mit Rand) mittig ausrichten
+  const left = width / 2 - (box.x + box.w / 2) * s;
+  const top = H.top - box.y * s;
+  // Drehpunkt = Mitte der "20"
+  const ox = H.pulseCenter[0] * s;
+  const oy = H.pulseCenter[1] * s;
+
+  const enter = spring({frame: frame - sec(H.enterAt), fps, config: {damping: 10.5, stiffness: 140, mass: 0.75}});
+  const floatIn = interpolate(frame, [14, 30], [0, 1], clamp);
+  const floatY = Math.sin((frame - 14) / 13) * H.float * floatIn;
+  const idleRot = Math.sin(frame / 21) * 0.8 * floatIn;
+
+  const pulseAt = caption ? cueFrame(H.pulse, caption, duration) : 12;
+  const pf = frame - pulseAt;
+  const pulse = interpolate(pf, [0, 3, 20], [0, 1, 0], clamp);
+  const shine = interpolate(pf, [2, 18], [-15, 118], clamp);
+  const glow = 14 + 5 * Math.sin(frame / 6) + 34 * pulse;
+  const ring = interpolate(pf, [0, 16], [0, 1], clamp);
+
+  const cx = (H.pulseCenter[0] / img.width) * 100;
+  const cy = (H.pulseCenter[1] / img.height) * 100;
+  const rx = (H.pulseSize[0] / 2 / img.width) * 100;
+  const ry = (H.pulseSize[1] / 2 / img.height) * 100;
+
+  const rocket = useOrbitRocket();
+  const rocketEl = rocket ? (
+    <RocketSprite
+      x={rocket.x}
+      y={Y(rocket.y)}
+      size={rocket.size}
+      heading={rocket.heading}
+      opacity={rocket.opacity}
+      filter={`drop-shadow(0 0 14px ${COLORS.purple}) drop-shadow(0 8px 12px rgba(0,0,0,0.5))`}
+    />
+  ) : null;
+
   return (
-    <Glass
-      accent={COLORS.cyan}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 28,
-        padding: '14px 32px 18px 24px',
-        transform: `scale(${0.85 + 0.15 * panel})`,
-        opacity: Math.min(1, panel * 1.4),
-      }}
-    >
-      <div
-        style={{
-          fontFamily: FONT_HEAVY,
-          fontWeight: 900,
-          fontSize: 200,
-          lineHeight: 1,
-          color: COLORS.white,
-          transform: `scale(${p})`,
-          textShadow: `0 0 ${glow}px ${COLORS.cyan}, 0 0 ${glow * 2}px ${COLORS.purple}, 9px 9px 0 ${COLORS.purpleDeep}`,
-          WebkitTextStroke: `5px ${COLORS.cyan}`,
-        }}
-      >
-        {TESTERS.count}
-      </div>
-      <div style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 22}}>
+    <div style={{position: 'relative', width, height: stageH, flexShrink: 0}}>
+      {/* Druckwelle hinter der "20" beim Wort "20" */}
+      {ring > 0 && ring < 1 ? (
         <div
           style={{
-            fontFamily: FONT_PIXEL,
-            fontWeight: 700,
-            fontSize: 50,
-            color: COLORS.gold,
-            letterSpacing: 3,
-            textShadow: '4px 4px 0 #3a2400',
-            opacity: interpolate(frame, [6, 14], [0, 1], clamp),
+            position: 'absolute',
+            left: left + ox - 520 * ring,
+            top: Y(top) + oy + floatY - 520 * ring,
+            width: 1040 * ring,
+            height: 1040 * ring,
+            borderRadius: '50%',
+            border: `${10 * (1 - ring) + 2}px solid ${COLORS.cyan}`,
+            boxShadow: `0 0 40px ${COLORS.cyan}, inset 0 0 30px ${COLORS.purple}`,
+            opacity: 0.85 * (1 - ring),
           }}
-        >
-          {TESTERS.label}
-        </div>
-        <div style={{display: 'flex', gap: 20}}>
-          {TESTERS.editions.map((e, i) => (
-            <EditionBadge key={e.label} label={e.label} color={e.color} from={i % 2 ? 500 : -500} delay={26 + i * 10} />
-          ))}
-        </div>
+        />
+      ) : null}
+      {rocket?.behind ? rocketEl : null}
+      <div
+        style={{
+          position: 'absolute',
+          left,
+          top: Y(top),
+          width: H.width,
+          height: heroH,
+          transformOrigin: `${ox}px ${oy}px`,
+          transform: `translateY(${floatY}px) scale(${0.3 + 0.7 * enter}) rotate(${(1 - enter) * -14 + idleRot}deg)`,
+          opacity: Math.min(1, enter * 3),
+          filter: `drop-shadow(0 0 ${glow}px ${COLORS.cyan}aa) drop-shadow(0 16px 26px rgba(0,0,0,0.45))`,
+        }}
+      >
+        <BrandImg img={img} width={H.width} />
+        {/* Glow-Puls auf der "20" + Glanz-Streifen über die ganze Grafik */}
+        <BrightCopy
+          img={img}
+          width={H.width}
+          opacity={pulse * 0.9}
+          mask={`radial-gradient(ellipse ${rx}% ${ry}% at ${cx}% ${cy}%, #000 0%, #000 45%, transparent 100%)`}
+        />
+        <BrightCopy img={img} width={H.width} opacity={pf >= 2 && pf <= 18 ? 0.85 : 0} mask={shineMask(shine, 9)} brightness={2.1} />
       </div>
-    </Glass>
+      {rocket && !rocket.behind ? rocketEl : null}
+
+      {/* JAVA / BEDROCK unter dem Hero, je beim gesprochenen Wort */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: Y(BRAND.editionsTop),
+          display: 'flex',
+          justifyContent: 'center',
+          gap: 26,
+        }}
+      >
+        {TESTERS.editions.map((e, i) => (
+          <EditionBadge
+            key={e.label}
+            label={e.label}
+            color={e.color}
+            from={i % 2 ? 500 : -500}
+            delay={caption ? cueFrame(e.cue, caption, duration) : 30 + i * 12}
+            size={44}
+          />
+        ))}
+      </div>
+    </div>
   );
 };
 
@@ -517,12 +629,89 @@ export const ChecklistVisual: React.FC<VProps> = ({duration}) => {
   );
 };
 
+/**
+ * EXKLUSIV-Pill (eigene Grafik): knallt von groß auf 1 rein, Blitz + Wackeln + Druckwelle
+ * beim Einschlag, danach leicht pulsierender Glow. f = Frames seit dem Stichwort.
+ */
+const ExklusivPill: React.FC<{f: number}> = ({f}) => {
+  const frame = useCurrentFrame();
+  const P = BRAND.exklusiv;
+  const img = BRAND.images.exklusiv;
+  if (f < 0) return null;
+  const w = P.width;
+  const h = brandHeight(img, w);
+  const slam = interpolate(f, [0, P.slamFrames], [0, 1], {...clamp, easing: Easing.in(Easing.cubic)});
+  const hit = f - P.slamFrames; // Frames seit dem Einschlag
+  const scale = P.fromScale + (1 - P.fromScale) * slam;
+  // Einschlag: kurz gestaucht, dann zurück
+  const squash = hit >= 0 ? 0.09 * Math.exp(-hit / 2.5) * Math.cos(hit * 1.1) : 0;
+  const shakeK = hit >= 0 ? Math.max(0, 1 - hit / 11) : 0;
+  const sx = (random(`pill-x-${frame}`) - 0.5) * 2 * P.shake * shakeK;
+  const sy = (random(`pill-y-${frame}`) - 0.5) * 2 * P.shake * 0.6 * shakeK;
+  const sr = (random(`pill-r-${frame}`) - 0.5) * 4 * shakeK;
+  const flash = interpolate(hit, [0, 1, 9], [0, 1, 0], clamp);
+  const wave = interpolate(hit, [0, 13], [0, 1], clamp);
+  const glow = 16 + 7 * Math.sin(frame / 6);
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        width: w,
+        height: h,
+        // Drehpunkt unten mittig: die große Pill wächst nach oben (übers Menü), nie über die Caption
+        transformOrigin: '50% 100%',
+        transform: `translate(${sx}px, ${sy}px) rotate(${P.rotate + (1 - slam) * -9 + sr}deg) scale(${scale * (1 + squash)}, ${scale * (1 - squash)})`,
+        opacity: interpolate(f, [0, 2], [0, 1], clamp),
+      }}
+    >
+      {/* Druckwelle (Pill-Umriss wächst und verblasst) */}
+      {wave > 0 && wave < 1 ? (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: h,
+            border: `${8 * (1 - wave) + 2}px solid ${COLORS.cyan}`,
+            boxShadow: `0 0 34px ${COLORS.cyan}, inset 0 0 22px ${COLORS.purple}`,
+            transform: `scale(${1 + 0.45 * wave}, ${1 + 1.1 * wave})`,
+            opacity: 1 - wave,
+          }}
+        />
+      ) : null}
+      <div
+        style={{
+          position: 'relative',
+          filter: `brightness(${1 + 1.3 * flash}) drop-shadow(0 0 ${glow}px ${COLORS.cyan}cc) drop-shadow(0 0 ${glow * 2}px ${COLORS.purple}88) drop-shadow(0 12px 18px rgba(0,0,0,0.6))`,
+        }}
+      >
+        <BrandImg img={img} width={w} />
+        <BrightCopy
+          img={img}
+          width={w}
+          opacity={hit >= 3 && hit <= 20 ? 0.8 : 0}
+          mask={shineMask(interpolate(hit, [3, 20], [-15, 118], clamp), 8, 110)}
+          brightness={1.9}
+        />
+      </div>
+    </div>
+  );
+};
+
 /* ---------- 4: Prefix – echtes Menü "Prefix wählen" (Kontext) + echte Chatzeile (Hauptsache) ---------- */
-export const PrefixVisual: React.FC<VProps> = () => {
+export const PrefixVisual: React.FC<VProps> = ({duration, caption}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const menuP = spring({frame: frame - sec(PREFIX.menuAt), fps, config: {damping: 12, stiffness: 150, mass: 0.8}});
   const chatP = spring({frame: frame - sec(PREFIX.chatAt), fps, config: {damping: 14, stiffness: 140}});
+  // Einschieben der Chatzeile OHNE Überschwingen: sonst ragt sie kurz in die rechte
+  // TikTok-Leiste und rutscht unter der (stehenden) EXKLUSIV-Pill weg
+  const chatX = spring({
+    frame: frame - sec(PREFIX.chatAt),
+    fps,
+    config: {damping: 18, stiffness: 140, overshootClamping: true},
+  });
   const giftP = spring({frame: frame - sec(PREFIX.rewardAt), fps, config: {damping: 8, stiffness: 170}});
   const menuScale = 0.62;
   // Chat-Schrift im Screenshot: 1 MC-Pixel = 4 px -> bei 1,75x genau 7 px (gleichmäßige Pixel)
@@ -532,11 +721,18 @@ export const PrefixVisual: React.FC<VProps> = () => {
   const shineT = (frame - sec(PREFIX.chatAt) - 8) % 40;
   const shine = interpolate(shineT, [0, 22], [-40, 140], clamp);
   const bump = 0.05 * Math.max(0, Math.sin(Math.min(Math.PI, ((frame - sec(PREFIX.chatAt) - 6) / 12) * Math.PI)));
+  // EXKLUSIV-Pill (eigene Grafik) beim Wort "exklusiven", direkt über der Chatzeile
+  const P = BRAND.exklusiv;
+  const pillAt = caption ? cueFrame(P.cue, caption, duration) : sec(1.2);
+  const pillW = P.width;
+  const pillH = brandHeight(BRAND.images.exklusiv, pillW);
+  const chatW = line.w * chatScale;
   return (
-    <div style={{position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 34, marginBottom: 22}}>
+    <div style={{position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 22}}>
       {/* Menü als Kontext: kleiner, tritt zurück, sobald die Chatzeile kommt */}
       <div
         style={{
+          marginBottom: P.gapAbove,
           transform: `translateY(${(1 - menuP) * 80}px) scale(${(0.55 + 0.45 * menuP) * (1 - 0.06 * chatP)}) rotate(${(1 - menuP) * -5}deg)`,
           transformOrigin: 'bottom center',
           opacity: Math.min(1, menuP * 1.6),
@@ -544,6 +740,13 @@ export const PrefixVisual: React.FC<VProps> = () => {
         }}
       >
         <PrefixMenu scale={menuScale} />
+      </div>
+
+      {/* Platz für die EXKLUSIV-Pill, direkt über der Chatzeile (Abstand P.gap) */}
+      <div style={{position: 'relative', width: chatW, height: pillH + P.gap, transform: 'translateX(-20px)', zIndex: 2}}>
+        <div style={{position: 'absolute', left: chatW * P.anchorX - pillW / 2, top: 0}}>
+          <ExklusivPill f={frame - pillAt} />
+        </div>
       </div>
 
       {/* Geschenk für "weitere Belohnungen" */}
@@ -558,11 +761,15 @@ export const PrefixVisual: React.FC<VProps> = () => {
         <PixelIcon name="gift" size={150} glow={COLORS.gold} />
       </div>
 
-      {/* Echte Chatzeile, groß: "[Beta Tester] Inhaber" (leicht nach links, weg von der TikTok-Leiste) */}
+      {/* Echte Chatzeile, groß: "[Beta Tester] Inhaber" (leicht nach links, weg von der TikTok-Leiste).
+          Liegt ÜBER der Pill, damit deren Schein/Schatten den cyanfarbenen Rahmen nicht anknabbert. */}
       <div
         style={{
           position: 'relative',
-          transform: `translateX(${(1 - chatP) * -900 - 20}px) scale(${1 + bump})`,
+          zIndex: 3,
+          transform: `translateX(${(1 - chatX) * -900 - 20}px) scale(${1 + bump})`,
+          // Pop beim Ankommen wächst nach links – die rechte Kante bleibt aus der TikTok-Leiste
+          transformOrigin: '100% 50%',
           opacity: Math.min(1, chatP * 2),
           boxShadow: `0 0 34px ${COLORS.cyan}aa, 0 0 0 5px ${COLORS.cyan}cc, 0 14px 30px rgba(0,0,0,0.55)`,
         }}

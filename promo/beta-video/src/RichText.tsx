@@ -1,6 +1,6 @@
 import React from 'react';
 import {interpolate, spring, useCurrentFrame, useVideoConfig} from 'remotion';
-import {COLORS, FONT_HEAVY} from './config';
+import {COLORS, Cue, FONT_HEAVY, sec} from './config';
 
 export type Piece = {text: string; highlight: boolean};
 /** Ein Wort kann aus mehreren Teilen bestehen (z. B. "**Bedrock**!"). */
@@ -32,6 +32,33 @@ export const parseRich = (text: string): Word[] => {
   });
   return words;
 };
+
+/** In wie vielen Frames alle Wörter einer Caption sichtbar sind (duration = Segment-Frames). */
+export const captionRevealFrames = (duration: number) => Math.min(duration * 0.6, duration - 20);
+
+const normWord = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}-]/gu, '');
+
+/**
+ * Frame (ab Segmentstart), in dem das Wort `word` der Caption reinploppt – gleiche Rechnung
+ * wie in KineticCaption. Satzzeichen und Groß-/Kleinschreibung zählen nicht ("bedrock" findet
+ * "**Bedrock**!"). Steht das Wort nicht (mehr) in der Caption, gibt es einen klaren Fehler.
+ */
+export const captionWordFrame = (text: string, duration: number, word: string): number => {
+  const words = parseRich(text);
+  const step = captionRevealFrames(duration) / Math.max(1, words.length);
+  const target = normWord(word);
+  const i = words.findIndex((w) => normWord(w.pieces.map((p) => p.text).join('')) === target);
+  if (i < 0) {
+    throw new Error(
+      `Stichwort "${word}" steht nicht in der Caption "${text}" – in src/config.ts (BRAND / TESTERS) anpassen.`,
+    );
+  }
+  return i * step;
+};
+
+/** Frame (ab Segmentstart) eines Cue: Wort der Caption (+ offset) oder feste Zeit. */
+export const cueFrame = (cue: Cue, text: string, duration: number): number =>
+  'at' in cue ? sec(cue.at) : Math.round(captionWordFrame(text, duration, cue.word) + sec(cue.offset ?? 0));
 
 const renderPieces = (w: Word) =>
   w.pieces.map((p, j) => (
