@@ -1,5 +1,5 @@
 import React from 'react';
-import {AbsoluteFill, Img, random, staticFile, useCurrentFrame} from 'remotion';
+import {AbsoluteFill, Easing, Img, interpolate, random, staticFile, useCurrentFrame} from 'remotion';
 import {BRAND, BrandImage, COLORS} from './config';
 
 // Eigene Grafiken (public/brand/, siehe BRAND in config.ts). Kein Pixel-Art -> immer weich
@@ -177,6 +177,62 @@ export const RocketWipe: React.FC<{wipe: Wipe}> = ({wipe}) => {
     </AbsoluteFill>
   );
 };
+
+/**
+ * "Slam": eine Grafik knallt von fromScale auf 1 (beschleunigt, slamFrames Frames lang) und
+ * wackelt nach dem Einschlag kurz. f = Frames seit Start, frame = aktueller Frame (für die
+ * Zufalls-Wackler), seed = Name für die Zufallswerte. Liefert u. a. scale (× (1 ± squash) für
+ * kurzes Stauchen), hit = Frames seit dem Einschlag, flash = Blitz 0–1, Wackeln sx/sy (px), sr (Grad).
+ */
+export const slamAt = (
+  f: number,
+  frame: number,
+  o: {fromScale: number; slamFrames: number; shake: number; seed: string},
+) => {
+  const slam = interpolate(f, [0, o.slamFrames], [0, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+    easing: Easing.in(Easing.cubic),
+  });
+  const hit = f - o.slamFrames;
+  const shakeK = hit >= 0 ? Math.max(0, 1 - hit / 11) : 0;
+  return {
+    slam,
+    hit,
+    scale: o.fromScale + (1 - o.fromScale) * slam,
+    squash: hit >= 0 ? 0.09 * Math.exp(-hit / 2.5) * Math.cos(hit * 1.1) : 0,
+    sx: (random(`${o.seed}-x-${frame}`) - 0.5) * 2 * o.shake * shakeK,
+    sy: (random(`${o.seed}-y-${frame}`) - 0.5) * 2 * o.shake * 0.6 * shakeK,
+    sr: (random(`${o.seed}-r-${frame}`) - 0.5) * 4 * shakeK,
+    flash: interpolate(hit, [0, 1, 9], [0, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
+    opacity: interpolate(f, [0, 2], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
+  };
+};
+
+/** Glanz-Streifen (BrightCopy + shineMask), der in `frames` Frames einmal über die Grafik läuft.
+ *  f = Frames seit Start des Glanzes. */
+export const Shine: React.FC<{
+  img: BrandImage;
+  width: number;
+  f: number;
+  frames?: number;
+  opacity?: number;
+  band?: number;
+  angle?: number;
+  brightness?: number;
+}> = ({img, width, f, frames = 16, opacity = 0.8, band = 8, angle = 110, brightness = 1.9}) => (
+  <BrightCopy
+    img={img}
+    width={width}
+    opacity={f >= 0 && f <= frames ? opacity : 0}
+    mask={shineMask(
+      interpolate(f, [0, frames], [-15, 118], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
+      band,
+      angle,
+    )}
+    brightness={brightness}
+  />
+);
 
 /** Ein "Einschlag", der das ganze Bild kurz wackeln lässt (Frame im Video, Stärke px, Länge). */
 export type Impact = {frame: number; amp: number; len: number};

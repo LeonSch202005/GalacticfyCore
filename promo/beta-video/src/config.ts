@@ -44,8 +44,44 @@ export type Cue = {word: string; offset?: number} | {at: number};
 // ------------------------------------------------------------
 //  Transparente PNGs, aus den Original-Grafiken freigestellt. KEIN Pixel-Art -> werden
 //  immer weich skaliert. Austauschen: neues PNG (gleicher Dateiname oder neuer Name in
-//  `images`) + width/height/box anpassen. Positionen in Bild-Pixeln (1080×1920),
+//  BRAND_IMAGES) + width/height/box anpassen. Positionen in Bild-Pixeln (1080×1920),
 //  Zeiten in Sekunden.
+/**
+ * Deine eigenen Grafiken (public/brand/): Datei, Originalgröße (px) und box = sichtbarer
+ * Inhalt im PNG (ohne transparenten Rand / weichen Schein). Danach wird ausgerichtet und
+ * skaliert ("width" in BRAND = sichtbare Breite bzw. Breite des ganzen PNGs, je nach Stelle).
+ */
+export const BRAND_IMAGES = {
+  /** Planet + "20" + "TESTER GESUCHT" (Segment 2) */
+  hero: {file: 'hero-20-tester.png', width: 1123, height: 1156, box: {x: 51, y: 99, w: 1014, h: 1045}},
+  /** Neon-Pill "★ EXKLUSIV" (Segment 4) */
+  exklusiv: {file: 'exklusiv-pill.png', width: 1900, height: 517, box: {x: 11, y: 10, w: 1877, h: 496}},
+  /** Rakete, zeigt nach rechts oben (Übergänge, Orbit in Segment 2, End-Card) */
+  rocket: {file: 'rocket.png', width: 1045, height: 1131, box: {x: 10, y: 11, w: 1023, h: 1108}},
+  /** Leuchtleiste "🚀 20 TESTER GESUCHT" (End-Card, erste Zeile) */
+  bar: {file: 'bar-20-tester.png', width: 1574, height: 304, box: {x: 44, y: 44, w: 1485, h: 215}},
+  /** Doppel-Banner "[Monitor] JAVA & BEDROCK [Grasblock]" (Segment 2 unter dem Hero + End-Card) */
+  javaBedrock: {file: 'java-bedrock.png', width: 1975, height: 436, box: {x: 21, y: 27, w: 1939, h: 384}},
+  /** Segment 3, Banner-Folge: Leiste "✦ FEATURES TESTEN 02" */
+  featuresTesten: {file: 'features-testen.png', width: 1937, height: 347, box: {x: 11, y: 12, w: 1915, h: 324}},
+  /** Segment 3: Leiste "[Käfer] BUGS FINDEN 01" */
+  bugsFinden: {file: 'bugs-finden.png', width: 1981, height: 401, box: {x: 11, y: 12, w: 1959, h: 377}},
+  /** Segment 3: Klemmbrett + "MENÜS CHECKEN" */
+  menuesChecken: {file: 'menues-checken.png', width: 1900, height: 690, box: {x: 26, y: 16, w: 1853, h: 661}},
+  /** Segment 3: Geldsack + Münzen + "WIRTSCHAFTS SYSTEM" */
+  wirtschaft: {file: 'wirtschaftssystem.png', width: 1998, height: 672, box: {x: 21, y: 12, w: 1958, h: 628}},
+} satisfies Record<string, BrandImage>;
+export type BrandImageName = keyof typeof BRAND_IMAGES;
+
+/**
+ * Echte Screenshots unter den Bannern in Segment 3 (siehe BRAND.checklist):
+ *  - 'quest'   Bossbar "Erste Schritte (3/8)"
+ *  - 'glitch'  der vorige Screenshot "verbuggt" kurz (RGB-Versatz, verschobene Streifen)
+ *  - 'menu'    Vorschau auf das Menü "Prefix wählen"
+ *  - 'economy' Scoreboard "Konto › 24.644" / "Nova › 250"
+ */
+export type ChecklistScreen = 'quest' | 'glitch' | 'menu' | 'economy';
+
 export const BRAND = {
   /** nur Info – das Logo im Video ist der echte Banner-Screenshot SCREENS.logo */
   name: 'GALACTICFY',
@@ -54,23 +90,16 @@ export const BRAND = {
 
   /** Ordner unter public/ */
   dir: 'brand',
-  images: {
-    /** Planet + "20" + "TESTER GESUCHT" (Segment 2) */
-    hero: {file: 'hero-20-tester.png', width: 1123, height: 1156, box: {x: 51, y: 99, w: 1014, h: 1045}},
-    /** Neon-Pill "★ EXKLUSIV" (Segment 4) */
-    exklusiv: {file: 'exklusiv-pill.png', width: 1900, height: 517, box: {x: 11, y: 10, w: 1877, h: 496}},
-    /** Rakete, zeigt nach rechts oben (Übergänge, Orbit in Segment 2, End-Card) */
-    rocket: {file: 'rocket.png', width: 1045, height: 1131, box: {x: 10, y: 11, w: 1023, h: 1108}},
-    /** Leuchtleiste "🚀 20 TESTER GESUCHT" (End-Card, erste Zeile) */
-    bar: {file: 'bar-20-tester.png', width: 1574, height: 304, box: {x: 44, y: 44, w: 1485, h: 215}},
-  },
+  /** alle PNGs (Dateiname, Größe, sichtbarer Inhalt) – siehe BRAND_IMAGES oben */
+  images: BRAND_IMAGES,
   /** Flugrichtung der Rakete im PNG (Grad, 0 = nach rechts, −90 = nach oben) */
   rocketHeading: -48,
 
   /** Segment 2: das "20 TESTER GESUCHT"-Hero groß zwischen Logo und Caption */
   hero: {
-    /** Darstellungsbreite des PNGs (px); sichtbarer Inhalt ≈ 90 % davon */
-    width: 760,
+    /** Darstellungsbreite des PNGs (px); sichtbarer Inhalt ≈ 90 % davon. Bei einer anderen
+     *  Breite auch BRAND.orbit (Mittelpunkt, Radien, Andockpunkt) nachziehen. */
+    width: 700,
     /** Oberkante des sichtbaren Inhalts (Planet) im Bild – Logo endet bei ≈ 300 */
     top: 312,
     /** wann es reinploppt (s ab Segmentstart) */
@@ -83,8 +112,30 @@ export const BRAND = {
     /** Leerlauf: Auf/Ab in px */
     float: 8,
   },
-  /** Segment 2: Oberkante der JAVA-/BEDROCK-Badges (unter dem Hero, über der Caption) */
-  editionsTop: 1034,
+  /**
+   * Segment 2: dein Banner "JAVA & BEDROCK" (BRAND_IMAGES.javaBedrock) unter dem Hero, über der
+   * Caption. Wird per Wisch von links aufgedeckt: beim Wort "Java" bis vor das "&" (linkes Panel),
+   * beim Wort "Bedrock" der Rest ("&" + BEDROCK-Panel), danach läuft ein Glanz drüber.
+   */
+  editions: {
+    /** sichtbare Breite (px) – 800 = rechter Rand bei x ≈ 940 (rechte ~140 px bleiben frei für
+     *  die TikTok/Reels-Leiste) */
+    width: 800,
+    /** Oberkante des sichtbaren Inhalts im Bild (px) – Hero endet bei ≈ 963, Caption-Text beginnt
+     *  bei ≈ 1185 */
+    top: 976,
+    /** Aufdecken: bis zu welcher x-Position im PNG (Pixel, 1975 = ganz), beim jeweiligen Stichwort.
+     *  862 = kurz vor dem "&" (dessen Rand beginnt bei ≈ 867) – bis zum nächsten Wisch bleibt
+     *  dort die leuchtende Wischkante stehen. */
+    reveal: [
+      {toX: 862, cue: {word: 'Java'} as Cue},
+      {toX: 1975, cue: {word: 'Bedrock'} as Cue},
+    ],
+    /** Dauer eines Wischs (Frames) */
+    wipeFrames: 6,
+    /** Glanz läuft nach dem letzten Wisch drüber (Frames danach) */
+    shineDelay: 6,
+  },
   /**
    * Segment 2: Rakete fliegt einmal um den Planeten (hinten kleiner, vorne größer) und
    * dockt dann rechts oben am Hero an (wie in der Original-Grafik mit Rakete).
@@ -93,16 +144,74 @@ export const BRAND = {
     start: 0.75,
     duration: 1.3,
     /** Raketenbreite (px) */
-    size: 150,
-    /** Mittelpunkt (Bild-px), Radien (px), Neigung (Grad) – folgt dem Ring der Grafik */
-    center: [540, 545] as [number, number],
-    radius: [405, 118] as [number, number],
+    size: 138,
+    /** Mittelpunkt (Bild-px), Radien (px), Neigung (Grad) – folgt dem Ring der Grafik
+     *  (passend zu hero.width 700) */
+    center: [540, 527] as [number, number],
+    radius: [373, 109] as [number, number],
     tilt: -13,
     /** Andock-Position (Mitte der Rakete, Bild-px) + Breite */
-    dock: [842, 372] as [number, number],
-    dockSize: 128,
+    dock: [818, 367] as [number, number],
+    dockSize: 118,
     /** Sekunden für das Andocken nach dem Orbit */
     dockDuration: 0.3,
+  },
+
+  /**
+   * Segment 3: deine Banner als Folge – jeder knallt beim Stichwort groß in die Banner-Fläche
+   * (Einschlag mit Blitz, Glanz und kleinem Wackeln), der vorige wird dabei kleiner nach oben
+   * weggeschoben. Es steht immer nur EIN großer Banner da. Darunter klein der passende echte
+   * Screenshot (screen, siehe ChecklistScreen) und 4 kleine Fortschritts-Kästchen.
+   * Reihenfolge = gesprochene Reihenfolge. Die Nummern-Boxen in deinen Grafiken sind "02"
+   * (FEATURES TESTEN) und "01" (BUGS FINDEN) – im Video kommt also erst 02, dann 01. Das wird als
+   * Countdown inszeniert (02 → 01 → die beiden großen Banner): pulse = Glow-Puls auf der
+   * Nummern-Box beim Einschlag (Mitte + Größe in PNG-Pixeln; weglassen = kein Puls).
+   * cue = Wort der Caption; offset (s) schiebt den Einschlag auf das gesprochene Wort der
+   * TTS-Spur (die Caption zeigt die Wörter schneller, als sie gesprochen werden). Je Banner
+   * ≥ 0,5 s ruhig lesbar: BUGS FINDEN steht von 7,4 s bis 8,0 s (Start von MENÜS CHECKEN).
+   * width = sichtbare Breite (px) – 860/850 = rechter Rand bei x ≈ 970, Nummern-Boxen ≤ 940.
+   */
+  checklist: {
+    banners: [
+      {
+        image: 'featuresTesten',
+        width: 860,
+        cue: {word: 'Systeme', offset: 0.05},
+        screen: 'quest',
+        pulse: {center: [1725, 175], size: [300, 260]},
+      },
+      {
+        image: 'bugsFinden',
+        width: 860,
+        cue: {word: 'Bugs', offset: 0.4},
+        screen: 'glitch',
+        pulse: {center: [1770, 205], size: [300, 270]},
+      },
+      {image: 'menuesChecken', width: 850, cue: {word: 'Menüs', offset: 0.6}, screen: 'menu'},
+      {image: 'wirtschaft', width: 850, cue: {word: 'Wirtschaft', offset: 0.8}, screen: 'economy'},
+    ] as {
+      image: BrandImageName;
+      width: number;
+      cue: Cue;
+      screen: ChecklistScreen;
+      pulse?: {center: [number, number]; size: [number, number]};
+    }[],
+    /** Mitte der Banner-Fläche im Bild (px von oben) */
+    centerY: 520,
+    /** Einschlag: Start-Skalierung, Dauer (Frames), Wackeln des Banners (px) */
+    fromScale: 1.7,
+    slamFrames: 6,
+    shake: 9,
+    /** so viele Frames braucht der vorige Banner, um weggeschoben zu werden */
+    exitFrames: 8,
+    /** echte Screenshots unter dem Banner: Abstand zur Unterkante des Banners, zu dem der
+     *  Screenshot gehört (px) + Skalierung (1 = Originalgröße der Karte; größer stößt das Menü
+     *  an die Fortschritts-Kästchen) */
+    screenGap: 40,
+    screenScale: 1,
+    /** Fortschritts-Kästchen: Oberkante (px von oben), Größe (px); null = keine */
+    progressTop: 1052 as number | null,
+    progressSize: 40,
   },
 
   /** Segment 4: EXKLUSIV-Pill knallt beim Wort "exklusiven" über die Chatzeile [Beta Tester] */
@@ -138,13 +247,21 @@ export const BRAND = {
     {cut: 1, frames: 12, from: [-360, 1060], to: [1420, -440], size: 400},
     {cut: 'end', frames: 12, from: [-380, 1180], to: [1400, -520], size: 430},
   ] as {cut: number | 'end'; frames: number; from: [number, number]; to: [number, number]; size: number}[],
-  /** Wackel-Stärke (px) bei den Raketen-Übergängen / beim EXKLUSIV-Einschlag */
+  /** Wackel-Stärke (px) des ganzen Bildes bei den Raketen-Übergängen / beim EXKLUSIV-Einschlag /
+   *  bei jedem Banner-Einschlag in Segment 3 */
   wipeShake: 16,
   slamShake: 7,
+  bannerShake: 4,
 
-  /** End-Card: Leiste als erste Zeile (sichtbare Breite = Zeilenbreite) + kleine Rakete am Logo */
+  /** End-Card: Leiste als erste Zeile (sichtbare Breite = Zeilenbreite), darunter das
+   *  "JAVA & BEDROCK"-Banner + kleine Rakete am Logo */
   endCard: {
     barWidth: 800,
+    /** sichtbare Breite des JAVA-&-BEDROCK-Banners (zweite Zeile); null = kein Banner (dann ggf.
+     *  wieder eine Text-Zeile in END_CARD eintragen) */
+    editionsWidth: 800 as number | null,
+    /** Glanz über das Banner (Frames ab End-Card-Start) */
+    editionsShineAt: 32,
     /** Glanz läuft über die Leiste (Frames ab End-Card-Start) */
     barShineAt: 26,
     rocketSize: 118,
@@ -359,35 +476,6 @@ export const INTRO = {
   percent: 73,
 };
 
-/**
- * Segment 2: groß die eigene Grafik "20 TESTER GESUCHT" (BRAND.hero), darunter die
- * Editionen als Badges – jede ploppt beim gesprochenen Wort rein (cue).
- */
-export const TESTERS: {editions: {label: string; color: string; cue: Cue}[]} = {
-  editions: [
-    {label: 'JAVA', color: '#e8762b', cue: {word: 'Java'}},
-    {label: 'BEDROCK', color: '#3aa655', cue: {word: 'Bedrock'}},
-  ],
-};
-
-/**
- * Checkliste in Segment 3. at = Sekunden ab Segmentstart, wann der Haken kommt
- * (passend zum gesprochenen Wort). screen = echter Screenshot, der unter der Liste erscheint:
- *  - 'quest'   Bossbar "Erste Schritte (3/8)"
- *  - 'glitch'  der vorige Screenshot "verbuggt" kurz + BUG-Sticker
- *  - 'menu'    Vorschau auf das Menü "Prefix wählen"
- *  - 'economy' Scoreboard "Konto › 24.644" / "Nova › 250"
- */
-export type ChecklistScreen = 'quest' | 'glitch' | 'menu' | 'economy';
-export const CHECKLIST: {text: string; at: number; screen: ChecklistScreen}[] = [
-  {text: 'Systeme testen', at: 0.35, screen: 'quest'},
-  {text: 'Bugs finden', at: 1.25, screen: 'glitch'},
-  {text: 'Menüs checken', at: 2.1, screen: 'menu'},
-  {text: 'Wirtschaft balancen', at: 3.3, screen: 'economy'},
-];
-/** Sticker, der bei "Bugs finden" aufploppt. */
-export const BUG_STICKER = 'BUG!';
-
 /** Segment 4: echtes Menü "Prefix wählen" + echte Chatzeile mit [Beta Tester]. Zeiten ab Segmentstart. */
 export const PREFIX = {
   /** Lesbares Schild über der Titelleiste des echten Menüs (Original-Titel ist kaum lesbar) */
@@ -444,11 +532,12 @@ export const DISCORD = {
 };
 
 /**
- * End-Card-Zeilen mit Icon. Die erste Zeile "20 TESTER GESUCHT" ist die eigene Leiste
- * BRAND.images.bar (siehe BRAND.endCard) und steht deshalb nicht hier.
+ * End-Card-Zeilen mit Icon. Die ersten beiden Zeilen sind deine Grafiken (Leiste "20 TESTER
+ * GESUCHT" + Banner "JAVA & BEDROCK", siehe BRAND.endCard) und stehen deshalb nicht hier.
  */
 export const END_CARD: {icon: 'rocket' | 'gamepad' | 'gift' | 'pointer'; text: string}[] = [
-  {icon: 'gamepad', text: '**Java** & **Bedrock**'},
+  // "Java & Bedrock" ist jetzt dein Banner (BRAND.endCard.editionsWidth). Ohne Banner wieder:
+  // {icon: 'gamepad', text: '**Java** & **Bedrock**'},
   {icon: 'gift', text: 'Prefix **[Beta Tester]** + Belohnungen'},
 ];
 /**

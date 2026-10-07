@@ -9,8 +9,9 @@ Galacticfy-Look (Lila-Stich, Sterne/Pixel-Partikel, Neon-Captions, Glas-Panels) 
 `[Beta Tester]`, Scoreboard, Bossbar-Quest, das Discord-Banner mit `/dc` – und der echte
 Bewerbungsweg auf dem Discord (Kanal `#tickets` → „Jetzt bewerben“ → Formular „Betatester“).
 Die großen Hingucker sind **deine eigenen Grafiken** (`public/brand/`): das „20 TESTER
-GESUCHT“-Hero, die EXKLUSIV-Pill, die Rakete und die Leuchtleiste – siehe
-[Eigene Grafiken](#eigene-grafiken-publicbrand).
+GESUCHT“-Hero, das „JAVA & BEDROCK“-Banner, die vier Banner der Checkliste (FEATURES TESTEN,
+BUGS FINDEN, MENÜS CHECKEN, WIRTSCHAFTS SYSTEM), die EXKLUSIV-Pill, die Rakete und die
+Leuchtleiste – siehe [Eigene Grafiken](#eigene-grafiken-publicbrand).
 
 Fertige Videos:
 
@@ -53,16 +54,18 @@ Headless-Browser. Pfad dort bei Bedarf anpassen.
 - `SEGMENTS` – die sechs Caption-Abschnitte mit `from`/`to` in Sekunden.
   `**Wort**` wird in Neon-Cyan hervorgehoben. `fontSize` optional pro Segment.
 - `clip` je Segment – welcher Gameplay-Clip dahinter läuft (siehe unten).
-- `BRAND` – Logo-Sticker („BETA“) und alles zu den **eigenen Grafiken** (Dateien, Größen,
-  Positionen, Zeiten), siehe [Eigene Grafiken](#eigene-grafiken-publicbrand).
-- `INTRO`, `TESTERS`, `CHECKLIST`, `PREFIX`, `SLOTS`, `DISCORD` – Inhalte und
-  Einsatzzeitpunkte (`at`, `chatAt`, `clickAt`, `formAt` … in Sekunden ab Segmentstart,
+- `BRAND_IMAGES` / `BRAND` – Logo-Sticker („BETA“) und alles zu den **eigenen Grafiken**
+  (Dateien, Größen, Positionen, Zeiten, Stichwörter) – auch die Banner-Folge in Segment 3
+  (`BRAND.checklist`) und das JAVA-&-BEDROCK-Banner (`BRAND.editions`), siehe
+  [Eigene Grafiken](#eigene-grafiken-publicbrand).
+- `INTRO`, `PREFIX`, `SLOTS`, `DISCORD` – Inhalte und
+  Einsatzzeitpunkte (`chatAt`, `clickAt`, `formAt` … in Sekunden ab Segmentstart,
   passend zum gesprochenen Wort) der animierten Visuals. `DISCORD` enthält außerdem Größe/
   Position des Formulars (`formScale`, `formTop`), die Abdunklung dahinter (`formDim`) und
   wann das Popup wieder zugeht (`closeAt`).
 - `SCREENS` / `SCREEN_REGIONS` / `SCREEN_OUTLINES` – die Screenshot-Ausschnitte (siehe unten).
-- `END_CARD` (Zeilen mit Icon; die erste Zeile „20 TESTER GESUCHT“ ist deine Leiste aus
-  `BRAND`) / `END_CARD_STEPS` (hervorgehobene Zeile „Discord /dc →
+- `END_CARD` (Zeilen mit Icon; die ersten beiden Zeilen – „20 TESTER GESUCHT“ und „JAVA &
+  BEDROCK“ – sind deine Grafiken aus `BRAND`) / `END_CARD_STEPS` (hervorgehobene Zeile „Discord /dc →
   #tickets → Jetzt bewerben“) / `END_CARD_LINKS` (galacticfy.de, Discord: /dc) /
   `END_CARD_FOOTER` („(Link in Bio)“) / `END_CARD_SECONDS` – Abschlusskarte.
 - `USE_VOICEOVER` / `VOICEOVER_FILE` / `VOICEOVER_VOLUME` – Voiceover (siehe unten).
@@ -139,9 +142,9 @@ Pixel-Art und werden weich skaliert (`smooth: true` in `SCREENS`).
 | Datei | Inhalt | Wo im Video |
 |---|---|---|
 | `logo.png` | GALACTICFY-Banner aus dem Scoreboard | Header (ganzes Video) + End-Card |
-| `bossbar.png` | Bossbar „Erste Schritte (3/8) » …“ + Fortschrittsbalken | Checkliste „Systeme testen“ (+ Glitch bei „Bugs finden“) |
-| `prefix-menu-chest.png` | Menü „Prefix wählen“: Titel + die sechs Truhen-Reihen + unterer GUI-Rahmen (aus `prefix-menu.png` geschnitten, ohne das leere Spieler-Inventar). Der kaum lesbare Original-Titel (Cyan auf Grau) wird im Video von einem dunklen „Prefix wählen“-Schild überdeckt (`PREFIX.menuTitle`) | Checkliste „Menüs checken“ + Segment 4 (klein, als Kontext) |
-| `scoreboard-economy.png` | „Konto › 24.644“ / „Nova › 250“ | Checkliste „Wirtschaft balancen“ |
+| `bossbar.png` | Bossbar „Erste Schritte (3/8) » …“ + Fortschrittsbalken | Segment 3 klein unter dem Banner FEATURES TESTEN (+ Glitch, solange BUGS FINDEN steht) |
+| `prefix-menu-chest.png` | Menü „Prefix wählen“: Titel + die sechs Truhen-Reihen + unterer GUI-Rahmen (aus `prefix-menu.png` geschnitten, ohne das leere Spieler-Inventar). Der kaum lesbare Original-Titel (Cyan auf Grau) wird im Video von einem dunklen „Prefix wählen“-Schild überdeckt (`PREFIX.menuTitle`) | Segment 3 klein unter dem Banner MENÜS CHECKEN + Segment 4 (klein, als Kontext) |
+| `scoreboard-economy.png` | „Konto › 24.644“ / „Nova › 250“ | Segment 3 klein unter dem Banner WIRTSCHAFTS SYSTEM |
 | `chat-betatester.png` | Chat „[Beta Tester] Inhaber ✦ Leon185“ | Segment 4 (Prefix) – groß (1,75×), nur „[Beta Tester] Inhaber“ (`SCREEN_REGIONS.chatRankLine`) |
 | `scoreboard-online.png` | „Online › 1/20“ | Segment 5 (20 Plätze) – markiert wird nur „/20“ (Server-Maximum), die Slots darunter bleiben „frei“ |
 | `discord-banner.png` | „DISCORD /dc \| TEAMSPEAK /ts“ | Segment 6 (Discord) – über dem Discord-Fenster, „/dc“ wird markiert; auf den Banner-Umriss zugeschnitten (`SCREEN_OUTLINES.discordBanner`), damit keine Spielwelt-Ecken stehen bleiben |
@@ -163,24 +166,44 @@ in `SCREEN_OUTLINES` – beides muss bei einem neuen Bild ggf. nachgezogen werde
 
 ## Eigene Grafiken (`public/brand/`)
 
-Deine Marken-Grafiken liegen als **transparente PNGs** in `public/brand/` (aus den
-Original-Grafiken mit schwarzem Hintergrund freigestellt, Originalauflösung). Sie sind kein
-Pixel-Art und werden immer **weich skaliert** (nie `pixelated`). Eingebunden über
-`src/Brand.tsx`; alle Dateien, Größen, Positionen und Zeiten stehen im Block `BRAND` in
-`src/config.ts`.
+Deine Marken-Grafiken liegen als **transparente PNGs** in `public/brand/` (Originalauflösung;
+Grafiken mit schwarzem Hintergrund wurden freigestellt, die mit Transparenz nur auf den
+sichtbaren Inhalt zugeschnitten). Sie sind kein Pixel-Art und werden immer **weich skaliert**
+(nie `pixelated`). Eingebunden über `src/Brand.tsx` (Bild, Glow-Puls, Glanz, Einschlag/„Slam“,
+Bild-Wackeln) und `src/Visuals.tsx`; Dateien + Größen stehen in `BRAND_IMAGES`, Größen,
+Positionen, Zeiten und Stichwörter im Block `BRAND` in `src/config.ts`. Die Grafiken selbst
+werden nie beschnitten oder übermalt.
 
 | Datei | Inhalt | Wo im Video (Zeiten im fertigen Video) |
 |---|---|---|
-| `hero-20-tester.png` | Planet + „20“ + „TESTER GESUCHT“ | Segment 2 (3–6 s), groß zwischen Logo und Caption (760 px breit): ploppt bei 3,0 s mit Federung + leichter Drehung rein, **Glow-Puls + Glanz auf der „20“ beim Wort „20“** (3,4 s), schwebt danach sanft. Darunter JAVA (4,2 s) und BEDROCK (4,6 s) – jeweils beim gesprochenen Wort |
+| `hero-20-tester.png` | Planet + „20“ + „TESTER GESUCHT“ | Segment 2 (3–6 s), groß zwischen Logo und Caption (700 px breit): ploppt bei 3,0 s mit Federung + leichter Drehung rein, **Glow-Puls + Glanz auf der „20“ beim Wort „20“** (3,4 s), schwebt danach sanft |
+| `java-bedrock.png` | Doppel-Banner „[Monitor] JAVA & BEDROCK [Grasblock]“ | Segment 2 direkt unter dem Hero, über der Caption (800 px sichtbar breit, rechter Rand bei x ≈ 940, Oberkante 976 px): per Wisch von links mit leuchtender Kante aufgedeckt – **beim Wort „Java“** (4,2–4,4 s) das linke JAVA-Panel (die Kante bleibt dort als schmale Lichtlinie stehen), **beim Wort „Bedrock“** (4,6–4,8 s) „&“ + BEDROCK-Panel; Glanz bei 5,0 s. End-Card: zweite Zeile (800 px = Zeilenbreite, statt der alten Text-Zeile „Java & Bedrock“), gleitet bei 22,37 s rein, Glanz bei ≈ 23,1 s |
+| `features-testen.png` | Leiste „✦ FEATURES TESTEN 02“ | Segment 3 (6–11 s), Banner 1: knallt **beim Wort „Systeme“** groß rein (Start 6,47 s, Einschlag 6,67 s mit Blitz, Stauchen, Wackeln, Glanz + Glow-Puls auf der „02“), 860 px sichtbar breit, Mitte bei y = 520. Darunter die echte Bossbar „Erste Schritte (3/8)“ |
+| `bugs-finden.png` | Leiste „[Käfer] BUGS FINDEN 01“ | Segment 3, Banner 2: **beim Wort „Bugs“** (Start 7,2 s, Einschlag 7,4 s, kurzer RGB-Glitch auf dem Banner, Puls auf der „01“; steht bis 8,0 s), 860 px sichtbar breit; FEATURES TESTEN wird dabei kleiner nach oben weggeschoben. Die Bossbar darunter „verbuggt“ zweimal kurz |
+| `menues-checken.png` | Klemmbrett + „MENÜS CHECKEN“ | Segment 3, Banner 3: **beim Wort „Menüs“** (Start 8,0 s, Einschlag 8,2 s), 850 px sichtbar breit; darunter das echte Menü „Prefix wählen“ |
+| `wirtschaftssystem.png` | Geldsack + Münzen + „WIRTSCHAFTS SYSTEM“ | Segment 3, Banner 4: **beim Wort „Wirtschaft“** (Start 9,2 s, Einschlag 9,4 s), 850 px sichtbar breit, bleibt bis zum Segmentende; darunter die echten Scoreboard-Zeilen „Konto › 24.644“ / „Nova › 250“ |
 | `rocket.png` | Cartoon-Rakete | **Übergänge** 1→2 (2,8–3,2 s) und 6→End-Card (21,8–22,2 s): schießt in 12 Frames diagonal durchs Bild (über der Caption), mit Leuchtspur + Nachzieh-Kopien, das Bild wackelt kurz. In Segment 2 fliegt sie einmal um den Planeten (3,75–5,05 s, hinten kleiner/vorne größer) und dockt rechts oben am Hero an. Auf der End-Card klein links neben dem Logo |
 | `exklusiv-pill.png` | Neon-Pill „★ EXKLUSIV“ | Segment 4 (11–15 s): knallt **beim Wort „exklusiven“** (12,2 s) von groß auf normal direkt über die echte Chatzeile „[Beta Tester] Inhaber“ (linksbündig mit der Zeile, über „[Beta Tester]“), Einschlag bei 12,4 s mit Blitz, Wackeln, Druckwelle und Glanz; die Chatzeile schiebt sich bei „Betatester-Prefix“ (12,45 s) darunter |
 | `bar-20-tester.png` | Leuchtleiste „🚀 20 TESTER GESUCHT“ | End-Card (22–25 s): erste Zeile (statt der alten Text-Zeile), so breit wie die anderen Zeilen, gleitet bei 22,2 s rein, Glanz bei ≈ 22,9 s |
+
+**Segment 3 (Banner-Folge):** Es steht immer nur **ein** großer Banner in der Banner-Fläche
+(zwischen Logo und Caption). Jeder neue knallt von 1,7× auf 1× rein, der vorige schrumpft dabei
+nach oben weg (≈ 0,27 s). Unter dem Banner sitzt der passende echte Screenshot (`screenScale` 1);
+er blendet aus, während der nächste Banner reinknallt, und der neue kommt erst mit dessen
+Einschlag (keine Überblendung zweier Screenshots). Ganz unten über der Caption vier kleine
+Kästchen, die sich beim Einschlag des jeweiligen Banners abhaken (Fortschritt 1–4, ohne Text);
+das nächste offene Kästchen glimmt schon vorher. Bei 860/850 px Breite ragen die Banner nur mit
+ihrer Pixel-Deko bis x ≈ 970 in den rechten Streifen; Texte und Nummern-Boxen bleiben bei x ≤ 940.
+Die Nummern-Boxen in deinen Grafiken lauten „02“ (FEATURES TESTEN) und „01“ (BUGS FINDEN) –
+gesprochen wird aber erst „Systeme“, dann „Bugs“. Die Grafiken bleiben unverändert; im Video wirkt das wie ein **Countdown 02 → 01** (je ein Glow-Puls auf der
+Nummer) vor den beiden großen Bannern. Wer lieber 01 → 02 hätte, exportiert die beiden Leisten mit
+getauschten Nummern neu (gleiche Dateinamen) – sonst ist nichts zu ändern.
 
 **Grafik austauschen:**
 
 1. Neues PNG **mit Transparenz** (kein schwarzer Hintergrund) nach `public/brand/` legen –
    am einfachsten unter dem alten Dateinamen.
-2. In `src/config.ts` unter `BRAND.images` `width`/`height` (Pixel) anpassen und `box` = der
+2. In `src/config.ts` unter `BRAND_IMAGES` `width`/`height` (Pixel) anpassen und `box` = der
    sichtbare Inhalt im PNG (ohne transparenten Rand/weichen Schein; im Zweifel
    `{x: 0, y: 0, w: width, h: height}`). Danach wird ausgerichtet – z. B. ist die Leiste auf
    der End-Card genau so breit wie die Zeilen darunter.
@@ -188,11 +211,22 @@ Pixel-Art und werden immer **weich skaliert** (nie `pixelated`). Eingebunden üb
    (0 = nach rechts, −90 = nach oben; die jetzige zeigt mit −48° nach rechts oben).
 4. Bei einem neuen Hero `BRAND.hero.pulseCenter`/`pulseSize` (wo die „20“ im PNG sitzt) und
    ggf. `BRAND.orbit.dock` (Andockpunkt der Rakete) prüfen.
+5. Bei einem neuen JAVA-&-BEDROCK-Banner in `BRAND.editions.reveal` die x-Position (PNG-Pixel)
+   prüfen, bis zu der beim Wort „Java“ aufgedeckt wird (jetzt 862 = kurz vor dem „&“), bei
+   neuen Checklisten-Leisten in `BRAND.checklist.banners[].pulse` die Mitte der Nummern-Box.
 
 **Größe/Position/Timing ändern** – alles in `BRAND`:
 
-- `hero` – Breite, Oberkante, Einsatz, `pulse` (Stichwort für den Glow-Puls), `float`;
-  `editionsTop` – Höhe der JAVA/BEDROCK-Badges (die Stichwörter stehen in `TESTERS`).
+- `hero` – Breite, Oberkante, Einsatz, `pulse` (Stichwort für den Glow-Puls), `float`. Bei
+  einer anderen Breite `orbit` (Mittelpunkt, Radien, Andockpunkt) mitskalieren.
+- `editions` – das JAVA-&-BEDROCK-Banner in Segment 2: sichtbare Breite, Oberkante, `reveal`
+  (je Teil: bis wohin aufgedeckt wird + Stichwort), `wipeFrames`, `shineDelay`.
+- `checklist` – die Banner-Folge in Segment 3: je Banner `image` (Name aus `BRAND_IMAGES`),
+  sichtbare Breite, `cue` (Stichwort + `offset`), `screen` (echter Screenshot darunter:
+  `'quest'`, `'glitch'`, `'menu'`, `'economy'`), `pulse` (Nummern-Box); außerdem `centerY`
+  (Mitte der Banner-Fläche), Einschlag (`fromScale`, `slamFrames`, `shake`), `exitFrames`,
+  `screenGap`/`screenScale` (Screenshot unter dem Banner) und `progressTop`/`progressSize`
+  (Fortschritts-Kästchen, `null` = keine). `bannerShake` = Bild-Wackeln je Einschlag.
 - `orbit` – Start, Dauer, Größe, Ellipse (`center`/`radius`/`tilt`) und Andockpunkt.
 - `exklusiv` – `cue` (Stichwort), Breite, `anchorX` (0,37 = linksbündig mit der Chatzeile, über
   „[Beta Tester]“; 0,5 = mittig über der Chatzeile), `gap`, Schräglage, Einschlag (`fromScale`, `slamFrames`, `shake`).
@@ -200,16 +234,24 @@ Pixel-Art und werden immer **weich skaliert** (nie `pixelated`). Eingebunden üb
   `2` = Segment 2 → 3, … `'end'` = zur End-Card), `frames` (≤ 12), `from`/`to` (Bild-px),
   `size`; `wipeShake`/`slamShake` = Wackel-Stärke. Einen Übergang löschen = Zeile entfernen,
   einen weiteren Schnitt = Zeile kopieren und `cut` ändern.
-- `endCard` – Breite der Leiste, Glanz-Zeitpunkt, kleine Rakete (`rocket: null` = keine).
+- `endCard` – Breite der Leiste, Glanz-Zeitpunkt, `editionsWidth` (JAVA-&-BEDROCK-Banner als
+  zweite Zeile; `null` = keins, dann ggf. die Text-Zeile in `END_CARD` wieder einkommentieren),
+  `editionsShineAt`, kleine Rakete (`rocket: null` = keine).
 
-**Stichwörter (`cue`):** Effekte wie die EXKLUSIV-Pill, der „20“-Puls oder die JAVA/BEDROCK-Badges
-warten auf ein Wort der Caption (`{word: 'exklusiven'}`) und kommen genau dann, wenn dieses
-Wort in der Caption reinploppt. Ändern sich Caption oder Timing, wandern sie automatisch mit.
+**Stichwörter (`cue`):** Effekte wie die EXKLUSIV-Pill, der „20“-Puls, das JAVA-&-BEDROCK-Banner
+oder die Banner in Segment 3 warten auf ein Wort der Caption (`{word: 'exklusiven'}`) und kommen
+genau dann, wenn dieses Wort in der Caption reinploppt (+ `offset`). Ändern sich Caption oder
+Timing, wandern sie automatisch mit.
 Achtung: Die Caption zeigt jeden Satz in den ersten ~60 % seines Zeitfensters – wer den Satz
 übers ganze Fenster spricht, sagt die Wörter etwas später. In der aktuellen TTS-Spur kommen
 „20“, „Java“ und „Bedrock“ (Segment 2) ≈ 0,6–1 s nach ihrem Effekt, „exklusiven“ (Segment 4)
-≈ 0,2 s danach. Nach deiner eigenen Aufnahme lässt sich jeder Effekt einzeln nachschieben, ohne
-die Caption zu ändern: `{word: 'Java', offset: 0.8}` (Sekunden, positiv = später). Steht das Wort nicht mehr in der Caption,
+≈ 0,2 s danach. Die vier Banner in Segment 3 haben deshalb schon einen `offset` (0,05 / 0,4 /
+0,6 / 0,8 s), damit ihr Einschlag auf dem gesprochenen Wort der TTS-Spur liegt (≈ 6,7 / 7,4 /
+8,2 / 9,4 s; gesprochen ≈ 6,8 / 7,5 / 8,1 / 9,4 s) – ohne offset kämen sie alle in den ersten
+2,4 s und stünden nur je ~0,4 s. Folge: In der **stummen Fassung** kommen diese vier Banner
+≈ 0,3–1 s nach ihrem Wort in der Caption (zum Mitlesen/Teleprompter zählt nur die Caption).
+Nach deiner eigenen Aufnahme lässt sich jeder Effekt einzeln nachschieben, ohne die Caption zu
+ändern: `{word: 'Java', offset: 0.8}` (Sekunden, positiv = später). Steht das Wort nicht mehr in der Caption,
 bricht das Rendern mit einer klaren Meldung ab (dann das Stichwort in `config.ts` anpassen,
 oder eine feste Zeit `{at: 1.2}` in Sekunden ab Segmentstart eintragen).
 
@@ -332,8 +374,7 @@ Caption in `src/config.ts`, bricht das Skript ab – dann dort `LINES` mit anpas
 
 Weicht das Timing ab: `from`/`to` der `SEGMENTS` an die Sätze anpassen (Reihenfolge
 beibehalten, End-Card ≥ 2,5 s) – die Clip-Ausschnitte (`clip.start`/`clip.end`) mitziehen,
-sonst laufen sie schneller/langsamer. Die Einsatzzeitpunkte (`CHECKLIST[].at`,
-`PREFIX.chatAt`, `SLOTS.alarmAt`, `DISCORD.clickAt`/`formAt`/`closeAt` …) ggf. auf die neuen Wörter
+sonst laufen sie schneller/langsamer. Die Einsatzzeitpunkte (`PREFIX.chatAt`, `SLOTS.alarmAt`, `DISCORD.clickAt`/`formAt`/`closeAt` …) ggf. auf die neuen Wörter
 legen – die Effekte der eigenen Grafiken (Stichwörter `cue`, Raketen-Übergänge an den
 Schnitten) wandern von selbst mit. Lautstärke bei Bedarf über `VOICEOVER_VOLUME` (0–1).
 
@@ -351,7 +392,8 @@ src/Background.tsx     Sternenhimmel, Nebel, Pixel-Block-Partikel
 src/PixelIcon.tsx      Pixel-Art-Icons (Rakete, Controller, Geschenk, ...)
 public/clips/          Gameplay-Aufnahmen (werden mit eingecheckt)
 public/screens/        Ausschnitte aus echten Ingame- und Discord-Screenshots (PNG)
-public/brand/          Eigene Grafiken (transparente PNGs: Hero, EXKLUSIV-Pill, Rakete, Leiste)
+public/brand/          Eigene Grafiken (transparente PNGs: Hero, JAVA & BEDROCK, 4 Checklisten-Banner,
+                       EXKLUSIV-Pill, Rakete, Leiste)
 public/voiceover.mp3   Voiceover (aktuell TTS; eigene Aufnahme -> import-voiceover.sh)
 scripts/               import-voiceover.sh (eigene Aufnahme importieren),
                        make-voiceover.sh / .py (TTS-Generator)

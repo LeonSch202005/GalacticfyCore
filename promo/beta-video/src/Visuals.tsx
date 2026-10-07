@@ -2,8 +2,6 @@ import React from 'react';
 import {Easing, interpolate, random, spring, useCurrentFrame, useVideoConfig} from 'remotion';
 import {
   BRAND,
-  BUG_STICKER,
-  CHECKLIST,
   ChecklistScreen,
   COLORS,
   DISCORD,
@@ -15,10 +13,9 @@ import {
   SCREEN_REGIONS,
   SCREENS,
   SLOTS,
-  TESTERS,
   sec,
 } from './config';
-import {BrandImg, BrightCopy, RocketSprite, brandHeight, shineMask, wrapDeg} from './Brand';
+import {BrandImg, BrightCopy, RocketSprite, Shine, brandHeight, shineMask, slamAt, wrapDeg} from './Brand';
 import {PixelIcon} from './PixelIcon';
 import {cueFrame} from './RichText';
 import {Highlight, Screen} from './Screen';
@@ -171,35 +168,6 @@ export const IntroVisual: React.FC<VProps> = ({duration}) => {
 };
 
 /* ---------- 2: 20 Betatester – Java & Bedrock ---------- */
-const EditionBadge: React.FC<{label: string; color: string; from: number; delay: number; size?: number}> = ({
-  label,
-  color,
-  from,
-  delay,
-  size = 38,
-}) => {
-  const p = usePop(delay, 13);
-  return (
-    <div
-      style={{
-        transform: `translateX(${(1 - p) * from}px)`,
-        opacity: Math.min(1, p * 1.5),
-        fontFamily: FONT_HEAVY,
-        fontWeight: 900,
-        fontSize: size,
-        color: '#fff',
-        padding: `${Math.round(size * 0.32)}px ${Math.round(size * 0.6)}px`,
-        background: `linear-gradient(180deg, ${color}, rgba(0,0,0,0.5))`,
-        border: `4px solid ${color}`,
-        boxShadow: `0 0 24px ${color}, inset -6px -6px 0 rgba(0,0,0,0.3)`,
-        letterSpacing: 1,
-        textShadow: '0 3px 0 rgba(0,0,0,0.5)',
-      }}
-    >
-      {label}
-    </div>
-  );
-};
 
 /** Rakete fliegt einmal um den Planeten des Heros und dockt rechts oben an (BRAND.orbit). */
 const useOrbitRocket = () => {
@@ -239,7 +207,8 @@ const useOrbitRocket = () => {
 /**
  * Segment 2: die eigene Grafik "20 TESTER GESUCHT" (BRAND.images.hero) groß zwischen Logo und
  * Caption – ploppt mit Federung + leichter Drehung rein, Glow-Puls + Glanz auf der "20" beim
- * Wort "20", schwebt danach sanft. Darunter JAVA/BEDROCK (je beim gesprochenen Wort).
+ * Wort "20", schwebt danach sanft. Darunter dein Banner "JAVA & BEDROCK" (BRAND.editions):
+ * linkes Panel beim Wort "Java", "&" + BEDROCK beim Wort "Bedrock" (Wisch von links).
  * Alle Positionen in Bild-Pixeln (1080×1920).
  */
 export const TestersVisual: React.FC<VProps> = ({duration, stage, caption}) => {
@@ -334,29 +303,88 @@ export const TestersVisual: React.FC<VProps> = ({duration, stage, caption}) => {
       </div>
       {rocket && !rocket.behind ? rocketEl : null}
 
-      {/* JAVA / BEDROCK unter dem Hero, je beim gesprochenen Wort */}
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: Y(BRAND.editionsTop),
-          display: 'flex',
-          justifyContent: 'center',
-          gap: 26,
-        }}
-      >
-        {TESTERS.editions.map((e, i) => (
-          <EditionBadge
-            key={e.label}
-            label={e.label}
-            color={e.color}
-            from={i % 2 ? 500 : -500}
-            delay={caption ? cueFrame(e.cue, caption, duration) : 30 + i * 12}
-            size={44}
-          />
-        ))}
+      {/* Banner "JAVA & BEDROCK" unter dem Hero, Teil für Teil beim gesprochenen Wort */}
+      <EditionsBanner duration={duration} caption={caption} top={Y(BRAND.editions.top)} />
+    </div>
+  );
+};
+
+/**
+ * Segment 2: dein Banner "JAVA & BEDROCK" (BRAND_IMAGES.javaBedrock). Wird per Wisch von links
+ * aufgedeckt (clip-path): je Stichwort bis zur nächsten x-Position (BRAND.editions.reveal), mit
+ * leuchtender Wischkante; danach Glanz. top = Oberkante des sichtbaren Inhalts (Stage-px).
+ */
+const EditionsBanner: React.FC<{duration: number; caption?: string; top: number}> = ({duration, caption, top}) => {
+  const frame = useCurrentFrame();
+  const {fps, width} = useVideoConfig();
+  const E = BRAND.editions;
+  const img = BRAND.images.javaBedrock;
+  const s = E.width / img.box.w;
+  const w = img.width * s;
+  const h = img.height * s;
+  const left = width / 2 - (img.box.x + img.box.w / 2) * s;
+  const cues = E.reveal.map((r, i) => (caption ? cueFrame(r.cue, caption, duration) : 30 + i * 12));
+  if (frame < cues[0]) return null;
+  // aufgedeckt bis revealX (PNG-px); jeder Wisch läuft von der vorigen Kante zur nächsten
+  let revealX = 0;
+  let edge = 0; // Sichtbarkeit der leuchtenden Wischkante
+  let run = 0; // 1 = Kante mitten im Wisch (breit), 0 = steht still (schmale Lichtlinie)
+  E.reveal.forEach((r, i) => {
+    // Wische, deren Stichwort noch nicht kam, zählen nicht (sonst stünde der erste Teil sofort da)
+    if (frame < cues[i]) return;
+    const prevX = i ? E.reveal[i - 1].toX : 0;
+    const t = interpolate(frame - cues[i], [0, E.wipeFrames], [0, 1], {...clamp, easing: Easing.out(Easing.cubic)});
+    revealX = Math.max(revealX, prevX + (r.toX - prevX) * t);
+    // bis zum nächsten Wisch bleibt die Kante als schmale Lichtlinie stehen (statt eines harten Schnitts)
+    const waiting = i < E.reveal.length - 1 && frame <= cues[i + 1];
+    const m = t > 0 && t < 1 ? Math.sin(t * Math.PI) : 0;
+    run = Math.max(run, m);
+    edge = Math.max(edge, waiting && t >= 0.5 ? 0.8 + 0.2 * m : m);
+  });
+  const full = revealX >= img.width - 0.5;
+  const enter = spring({frame: frame - cues[0], fps, config: {damping: 12, stiffness: 170, mass: 0.6}});
+  const last = cues[cues.length - 1];
+  // kleiner "Stups" bei jedem weiteren Stichwort
+  const bump = cues
+    .slice(1)
+    .reduce((m, c) => Math.max(m, interpolate(frame - c, [0, 3, 10], [0, 1, 0], clamp)), 0);
+  const glow = 12 + 4 * Math.sin(frame / 6) + 14 * bump;
+  const edgeX = revealX * s;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left,
+        top: top - img.box.y * s,
+        width: w,
+        height: h,
+        transformOrigin: `${(img.box.x + img.box.w / 2) * s}px ${(img.box.y + img.box.h / 2) * s}px`,
+        transform: `translateY(${(1 - enter) * 26}px) scale(${(0.86 + 0.14 * enter) * (1 + 0.035 * bump)})`,
+        opacity: Math.min(1, enter * 2.5),
+      }}
+    >
+      {/* Glow am Eltern-Element -> folgt dem schon aufgedeckten Teil */}
+      <div style={{filter: `drop-shadow(0 0 ${glow}px ${COLORS.purple}aa) drop-shadow(0 10px 16px rgba(0,0,0,0.5))`}}>
+        <div style={{clipPath: full ? undefined : `inset(0 ${(w - edgeX).toFixed(2)}px 0 0)`}}>
+          <BrandImg img={img} width={w} />
+          <Shine img={img} width={w} f={frame - (last + E.wipeFrames + E.shineDelay)} frames={16} opacity={0.75} />
+        </div>
       </div>
+      {edge > 0.01 ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: edgeX - (4 + 6 * run) / 2,
+            top: img.box.y * s - 6,
+            width: 4 + 6 * run,
+            height: img.box.h * s + 12,
+            borderRadius: 5,
+            background: run > 0.3 ? '#fff' : '#e6fdff',
+            boxShadow: `0 0 ${10 + 8 * run}px #fff, 0 0 ${24 + 10 * run}px ${COLORS.cyan}, 0 0 60px ${COLORS.purple}`,
+            opacity: edge,
+          }}
+        />
+      ) : null}
     </div>
   );
 };
@@ -467,138 +495,225 @@ const Glitch: React.FC<{amount: number; children: React.ReactNode}> = ({amount, 
   );
 };
 
-const BugSticker: React.FC<{progress: number}> = ({progress}) => {
+/** Frames (ab Segmentstart), in denen die Banner in Segment 3 starten bzw. einschlagen. */
+const useChecklistTimes = (duration: number, caption?: string) => {
+  const C = BRAND.checklist;
+  const starts = C.banners.map((b, i) => (caption ? cueFrame(b.cue, caption, duration) : 12 + i * 30));
+  const hits = starts.map((f) => f + C.slamFrames);
+  return {starts, hits};
+};
+
+/**
+ * Ein Banner aus BRAND.checklist: knallt bei `start` in die Banner-Fläche (slamAt: von groß auf
+ * 1, Blitz, Stauchen, Wackeln, Glanz) und wird bei `exitAt` (= Start des nächsten Banners) kleiner
+ * nach oben weggeschoben. Mitte des sichtbaren Inhalts bei (cx, cy) in Stage-px.
+ */
+const ChecklistBanner: React.FC<{i: number; start: number; exitAt: number | null; cx: number; cy: number}> = ({
+  i,
+  start,
+  exitAt,
+  cx,
+  cy,
+}) => {
   const frame = useCurrentFrame();
-  if (progress <= 0) return null;
+  const C = BRAND.checklist;
+  const b = C.banners[i];
+  const img = BRAND.images[b.image];
+  const f = frame - start;
+  const g = exitAt === null ? -1 : frame - exitAt;
+  if (f < 0 || g > C.exitFrames) return null;
+  const s = b.width / img.box.w;
+  const w = img.width * s;
+  const h = img.height * s;
+  const ox = (img.box.x + img.box.w / 2) * s;
+  const oy = (img.box.y + img.box.h / 2) * s;
+  const sl = slamAt(f, frame, {fromScale: C.fromScale, slamFrames: C.slamFrames, shake: C.shake, seed: `banner-${i}`});
+  const tilt = (i % 2 ? 1 : -1) * 7;
+  // weggeschoben: kleiner, nach oben, leicht gekippt, ausblenden
+  const e = g < 0 ? 0 : interpolate(g, [0, C.exitFrames], [0, 1], {...clamp, easing: Easing.out(Easing.cubic)});
+  // kurz halten, damit der Banner danach noch ≥ 0,4 s sauber lesbar steht
+  const glitch = b.screen === 'glitch' ? interpolate(sl.hit, [0, 1, 5], [0, 0.6, 0], clamp) : 0;
+  const glow = 14 + 6 * Math.sin(frame / 6) + 26 * sl.flash;
+  // Glow-Puls auf der Nummern-Box (02 / 01) kurz nach dem Einschlag
+  const pulse = b.pulse ? interpolate(sl.hit, [1, 5, 22], [0, 1, 0], clamp) : 0;
+  const banner = (
+    <div style={{position: 'relative', width: w, height: h}}>
+      <BrandImg img={img} width={w} />
+      {b.pulse ? (
+        <BrightCopy
+          img={img}
+          width={w}
+          opacity={pulse * 0.95}
+          brightness={1.9}
+          mask={`radial-gradient(ellipse ${(b.pulse.size[0] / 2 / img.width) * 100}% ${(b.pulse.size[1] / 2 / img.height) * 100}% at ${(b.pulse.center[0] / img.width) * 100}% ${(b.pulse.center[1] / img.height) * 100}%, #000 0%, #000 45%, transparent 100%)`}
+        />
+      ) : null}
+      <Shine img={img} width={w} f={sl.hit - 2} frames={16} opacity={0.8} />
+    </div>
+  );
   return (
     <div
       style={{
         position: 'absolute',
-        right: 10,
-        top: '100%',
-        marginTop: 6,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '8px 20px 8px 14px',
-        background: 'rgba(30,4,16,0.92)',
-        border: '5px solid #ff3355',
-        boxShadow: '0 0 28px #ff3355, inset 0 0 14px rgba(255,51,85,0.4)',
-        fontFamily: FONT_HEAVY,
-        fontWeight: 900,
-        fontSize: 46,
-        color: '#ff4466',
-        textShadow: '0 0 14px #ff3355, 0 3px 0 rgba(0,0,0,0.6)',
-        transform: `scale(${progress}) rotate(${-6 + Math.sin(frame / 6) * 3}deg)`,
+        left: cx - ox,
+        top: cy - oy,
+        width: w,
+        height: h,
+        transformOrigin: `${ox}px ${oy}px`,
+        transform: [
+          `translate(${sl.sx}px, ${sl.sy - e * 170}px)`,
+          `rotate(${(1 - sl.slam) * tilt + sl.sr + e * -tilt * 0.6}deg)`,
+          `scale(${sl.scale * (1 + sl.squash) * (1 - 0.6 * e)}, ${sl.scale * (1 - sl.squash) * (1 - 0.6 * e)})`,
+        ].join(' '),
+        opacity: sl.opacity * (1 - e),
+        filter: `brightness(${1 + 1.1 * sl.flash}) drop-shadow(0 0 ${glow}px ${COLORS.purple}99) drop-shadow(0 12px 18px rgba(0,0,0,0.55))`,
         zIndex: 2,
       }}
     >
-      <PixelIcon name="bug" size={52} glow="#ff3355" />
-      {BUG_STICKER}
+      {glitch > 0.01 ? <Glitch amount={glitch}>{banner}</Glitch> : banner}
     </div>
   );
 };
 
-export const ChecklistVisual: React.FC<VProps> = ({duration}) => {
+/** 4 kleine Fortschritts-Kästchen: leuchten auf, sobald ihr Banner einschlägt (aktuelles pulsiert);
+ *  das nächste, noch leere Kästchen glimmt schon vorher (kein toter Moment vor dem ersten Banner). */
+const ChecklistProgress: React.FC<{hits: number[]}> = ({hits}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const panel = usePop(0, 14);
-  const cues = CHECKLIST.map((c) => sec(c.at));
+  const size = BRAND.checklist.progressSize;
+  const gap = Math.round(size * 0.55);
+  const appear = spring({frame: frame - 2, fps, config: {damping: 14, stiffness: 160}});
   let active = -1;
-  cues.forEach((c, i) => {
-    if (frame >= c) active = i;
+  hits.forEach((h, i) => {
+    if (frame >= h) active = i;
   });
-
-  // Jede Karte (außer 'glitch') bleibt sichtbar, bis die nächste Karte kommt.
-  const cards = CHECKLIST.map((c, i) => ({screen: c.screen, from: cues[i]})).filter(
-    (c): c is {screen: Exclude<ChecklistScreen, 'glitch'>; from: number} => c.screen !== 'glitch',
+  return (
+    <div
+      style={{
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        gap,
+        transform: `scale(${0.6 + 0.4 * appear})`,
+        opacity: Math.min(1, appear * 1.5),
+      }}
+    >
+      {/* Verbindungslinie, füllt sich mit */}
+      <div
+        style={{
+          position: 'absolute',
+          left: size / 2,
+          right: size / 2,
+          top: size / 2 - 3,
+          height: 6,
+          background: 'rgba(255,255,255,0.18)',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: size / 2,
+          top: size / 2 - 3,
+          height: 6,
+          width:
+            (size + gap) *
+            Math.max(
+              0,
+              hits.reduce((n, h) => n + interpolate(frame - h, [0, 6], [0, 1], clamp), 0) - 1,
+            ),
+          background: `linear-gradient(90deg, ${COLORS.cyan}, ${COLORS.purple})`,
+          boxShadow: `0 0 12px ${COLORS.cyan}`,
+        }}
+      />
+      {hits.map((h, i) => {
+        const done = frame >= h;
+        const p = spring({frame: frame - h, fps, config: {damping: 9, stiffness: 200}});
+        const isActive = i === active;
+        const pulse = isActive ? 1 + 0.08 * Math.sin((frame - h) / 4) : 1;
+        // nächstes offenes Kästchen: glimmt cyan und atmet leicht
+        const wait = !done && i === active + 1 ? 0.5 - 0.5 * Math.cos(frame / 4) : -1;
+        return (
+          <div
+            key={i}
+            style={{
+              position: 'relative',
+              width: size,
+              height: size,
+              boxSizing: 'border-box',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: done
+                ? `linear-gradient(180deg, rgba(46,242,255,0.45), rgba(91,26,168,0.85))`
+                : 'rgba(10,5,30,0.7)',
+              border: `4px solid ${done ? COLORS.cyan : wait >= 0 ? `rgba(46,242,255,${(0.55 + 0.45 * wait).toFixed(3)})` : 'rgba(255,255,255,0.5)'}`,
+              boxShadow: done
+                ? `0 0 ${isActive ? 22 : 10}px ${COLORS.cyan}, inset -4px -4px 0 rgba(0,0,0,0.3)`
+                : wait >= 0
+                  ? `0 0 ${(4 + 14 * wait).toFixed(2)}px ${COLORS.cyan}, inset -4px -4px 0 rgba(0,0,0,0.4)`
+                  : 'inset -4px -4px 0 rgba(0,0,0,0.4)',
+              transform: `scale(${(done ? 0.7 + 0.3 * p + (isActive ? 0.12 : 0) : wait >= 0 ? 1 + 0.07 * wait : 1) * pulse})`,
+            }}
+          >
+            {done ? <PixelIcon name="check" size={size * 0.72 * Math.min(1, p)} glow="#3dff7a" /> : null}
+          </div>
+        );
+      })}
+    </div>
   );
-  const glitches = CHECKLIST.map((c, i) => (c.screen === 'glitch' ? cues[i] : null)).filter(
+};
+
+/**
+ * Segment 3: deine Banner (BRAND.checklist) als Folge – immer nur einer groß, jeweils beim
+ * Stichwort; darunter klein der echte Screenshot zum aktuellen Punkt (Bossbar-Quest, Glitch bei
+ * "Bugs", Prefix-Menü, Konto/Nova) und 4 Fortschritts-Kästchen. Positionen in Bild-px.
+ */
+export const ChecklistVisual: React.FC<VProps> = ({duration, stage, caption}) => {
+  const frame = useCurrentFrame();
+  const {fps, width} = useVideoConfig();
+  const stageTop = stage?.top ?? 0;
+  const stageH = stage?.height ?? 773;
+  const Y = (abs: number) => abs - stageTop;
+  const C = BRAND.checklist;
+  const {starts, hits} = useChecklistTimes(duration, caption);
+
+  // Jede Karte (außer 'glitch') kommt beim Einschlag ihres Banners, blendet aus, während der Banner
+  // der nächsten Karte reinknallt (weg, bevor die neue Karte kommt), und sitzt screenGap unter der
+  // Unterkante ihres Banners.
+  const bannerBottom = (i: number) => {
+    const b = C.banners[i];
+    const img = BRAND.images[b.image];
+    return C.centerY + (img.box.h * b.width) / img.box.w / 2;
+  };
+  const cards = C.banners
+    .map((b, i) => ({screen: b.screen, start: starts[i], from: hits[i], top: bannerBottom(i) + C.screenGap}))
+    .filter(
+      (c): c is {screen: Exclude<ChecklistScreen, 'glitch'>; start: number; from: number; top: number} =>
+        c.screen !== 'glitch',
+    );
+  const cardFade = Math.max(2, C.slamFrames);
+  const glitches = C.banners.map((b, i) => (b.screen === 'glitch' ? hits[i] : null)).filter(
     (c): c is number => c !== null,
   );
 
   return (
-    <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 30}}>
-      <Glass
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-          width: 760,
-          padding: '16px 20px',
-          // Zeilen dürfen beim Einschieben nicht über das Panel hinausragen
-          overflow: 'hidden',
-          transform: `scaleY(${0.6 + 0.4 * panel})`,
-          transformOrigin: 'top center',
-          opacity: Math.min(1, panel * 1.5),
-        }}
-      >
-        {CHECKLIST.map((item, i) => {
-          const appear = spring({
-            frame: frame - 2 - i * 3,
-            fps,
-            config: {damping: 16, stiffness: 170, mass: 0.7, overshootClamping: true},
-          });
-          const check = spring({frame: frame - cues[i], fps, config: {damping: 9, stiffness: 200}});
-          const done = frame >= cues[i];
-          const isActive = i === active;
-          return (
-            <div
-              key={item.text}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 24,
-                padding: '8px 16px',
-                transform: `translateX(${(1 - appear) * (i % 2 ? 40 : -40)}px) scale(${0.94 + 0.06 * appear})`,
-                opacity: Math.min(1, appear * 1.5),
-                background: isActive ? 'rgba(46,242,255,0.2)' : done ? 'rgba(46,242,255,0.08)' : 'rgba(255,255,255,0.04)',
-                border: `4px solid ${done ? (isActive ? COLORS.cyan : 'rgba(46,242,255,0.55)') : 'rgba(180,77,255,0.45)'}`,
-                boxShadow: isActive ? `0 0 24px rgba(46,242,255,0.55)` : 'none',
-              }}
-            >
-              <div
-                style={{
-                  width: 54,
-                  height: 54,
-                  background: '#1a1030',
-                  border: '4px solid #fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: 'inset -5px -5px 0 rgba(0,0,0,0.5)',
-                  flexShrink: 0,
-                }}
-              >
-                {done ? <PixelIcon name="check" size={46 * check} glow="#3dff7a" /> : null}
-              </div>
-              <div
-                style={{
-                  fontFamily: FONT_HEAVY,
-                  fontWeight: 900,
-                  fontSize: 44,
-                  color: done ? COLORS.white : COLORS.muted,
-                  textShadow: '0 3px 0 rgba(0,0,0,0.6)',
-                }}
-              >
-                {item.text}
-              </div>
-            </div>
-          );
-        })}
-      </Glass>
-
-      {/* Echte Server-Screenshots zum gerade abgehakten Punkt */}
-      <div style={{position: 'relative', width: 800, height: 310}}>
+    <div style={{position: 'relative', width, height: stageH, flexShrink: 0}}>
+      {/* Echte Server-Screenshots zum aktuellen Punkt, klein unter dem Banner */}
+      <div style={{position: 'absolute', left: 0, right: 0, top: 0}}>
         {cards.map((c, k) => {
-          const to = k < cards.length - 1 ? cards[k + 1].from : duration + 30;
-          if (frame < c.from || frame > to + 6) return null;
+          const to = k < cards.length - 1 ? cards[k + 1].start : duration + 30;
+          if (frame < c.from || frame > to + cardFade) return null;
           const inP = spring({frame: frame - c.from, fps, config: {damping: 12, stiffness: 170, mass: 0.7}});
-          const outP = interpolate(frame, [to, to + 6], [1, 0], clamp);
+          const outP = interpolate(frame, [to, to + cardFade], [1, 0], clamp);
           const g = glitches.find((gf) => gf >= c.from && gf < to);
-          const glitch = g === undefined ? 0 : interpolate(frame - g, [0, 2, 14], [0, 1, 0], clamp);
-          const sticker =
-            g === undefined ? 0 : spring({frame: frame - g, fps, config: {damping: 9, stiffness: 190}});
+          // zwei kurze Glitch-Stöße, solange "BUGS FINDEN" steht
+          const glitch =
+            g === undefined
+              ? 0
+              : Math.max(
+                  interpolate(frame - g, [0, 2, 12], [0, 1, 0], clamp),
+                  interpolate(frame - g, [15, 17, 22], [0, 0.6, 0], clamp),
+                );
           const Card = CARD[c.screen];
           return (
             <div
@@ -607,24 +722,40 @@ export const ChecklistVisual: React.FC<VProps> = ({duration}) => {
                 position: 'absolute',
                 left: 0,
                 right: 0,
-                top: 0,
+                top: Y(c.top),
                 display: 'flex',
                 justifyContent: 'center',
                 opacity: Math.min(1, inP * 1.6) * outP,
-                transform: `translateY(${(1 - inP) * 50}px) scale(${(0.82 + 0.18 * inP) * (0.92 + 0.08 * outP)})`,
+                transform: `translateY(${(1 - inP) * 50}px) scale(${C.screenScale * (0.82 + 0.18 * inP) * (0.92 + 0.08 * outP)})`,
                 transformOrigin: 'top center',
               }}
             >
-              <div style={{position: 'relative'}}>
-                <Glitch amount={glitch}>
-                  <Card />
-                </Glitch>
-                <BugSticker progress={sticker} />
-              </div>
+              <Glitch amount={glitch}>
+                <Card />
+              </Glitch>
             </div>
           );
         })}
       </div>
+
+      {/* Fortschritt: 4 kleine Kästchen */}
+      {C.progressTop !== null ? (
+        <div style={{position: 'absolute', left: 0, right: 0, top: Y(C.progressTop), display: 'flex', justifyContent: 'center'}}>
+          <ChecklistProgress hits={hits} />
+        </div>
+      ) : null}
+
+      {/* Die Banner: immer nur einer groß, der vorige wird weggeschoben */}
+      {C.banners.map((b, i) => (
+        <ChecklistBanner
+          key={b.image}
+          i={i}
+          start={starts[i]}
+          exitAt={i < starts.length - 1 ? starts[i + 1] : null}
+          cx={width / 2}
+          cy={Y(C.centerY)}
+        />
+      ))}
     </div>
   );
 };
@@ -640,16 +771,12 @@ const ExklusivPill: React.FC<{f: number}> = ({f}) => {
   if (f < 0) return null;
   const w = P.width;
   const h = brandHeight(img, w);
-  const slam = interpolate(f, [0, P.slamFrames], [0, 1], {...clamp, easing: Easing.in(Easing.cubic)});
-  const hit = f - P.slamFrames; // Frames seit dem Einschlag
-  const scale = P.fromScale + (1 - P.fromScale) * slam;
-  // Einschlag: kurz gestaucht, dann zurück
-  const squash = hit >= 0 ? 0.09 * Math.exp(-hit / 2.5) * Math.cos(hit * 1.1) : 0;
-  const shakeK = hit >= 0 ? Math.max(0, 1 - hit / 11) : 0;
-  const sx = (random(`pill-x-${frame}`) - 0.5) * 2 * P.shake * shakeK;
-  const sy = (random(`pill-y-${frame}`) - 0.5) * 2 * P.shake * 0.6 * shakeK;
-  const sr = (random(`pill-r-${frame}`) - 0.5) * 4 * shakeK;
-  const flash = interpolate(hit, [0, 1, 9], [0, 1, 0], clamp);
+  const {slam, hit, scale, squash, sx, sy, sr, flash} = slamAt(f, frame, {
+    fromScale: P.fromScale,
+    slamFrames: P.slamFrames,
+    shake: P.shake,
+    seed: 'pill',
+  });
   const wave = interpolate(hit, [0, 13], [0, 1], clamp);
   const glow = 16 + 7 * Math.sin(frame / 6);
   return (

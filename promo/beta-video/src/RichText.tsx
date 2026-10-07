@@ -50,7 +50,7 @@ export const captionWordFrame = (text: string, duration: number, word: string): 
   const i = words.findIndex((w) => normWord(w.pieces.map((p) => p.text).join('')) === target);
   if (i < 0) {
     throw new Error(
-      `Stichwort "${word}" steht nicht in der Caption "${text}" – in src/config.ts (BRAND / TESTERS) anpassen.`,
+      `Stichwort "${word}" steht nicht in der Caption "${text}" – in src/config.ts (BRAND) anpassen.`,
     );
   }
   return i * step;

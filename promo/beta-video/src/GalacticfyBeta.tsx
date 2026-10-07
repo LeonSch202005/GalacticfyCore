@@ -14,6 +14,7 @@ import {BrandImg, BrightCopy, Impact, RocketSprite, RocketWipe, shakeAt, shineMa
 import {CutFlash, FootageGrade, FootageShot} from './Footage';
 import {
   BRAND,
+  BrandImage,
   COLORS,
   DISCORD,
   END_CARD,
@@ -227,19 +228,27 @@ const EndCardStep: React.FC<{text: string; look: 'text' | 'channel' | 'button'}>
   );
 };
 
-/** End-Card, erste Zeile: die eigene Leiste "20 TESTER GESUCHT" (sichtbare Breite = Zeilenbreite). */
-const EndCardBar: React.FC<{progress: number}> = ({progress}) => {
+/**
+ * End-Card-Zeile aus einer eigenen Grafik (sichtbare Breite = visibleWidth, z. B. Zeilenbreite):
+ * Leiste "20 TESTER GESUCHT" bzw. Banner "JAVA & BEDROCK". Gleitet rein, Glanz bei shineAt.
+ */
+const EndCardImageRow: React.FC<{
+  img: BrandImage;
+  visibleWidth: number;
+  shineAt: number;
+  progress: number;
+  pulse?: boolean;
+}> = ({img, visibleWidth, shineAt, progress, pulse}) => {
   const frame = useCurrentFrame();
-  const img = BRAND.images.bar;
-  const s = BRAND.endCard.barWidth / img.box.w;
+  const s = visibleWidth / img.box.w;
   const w = img.width * s;
-  const shineF = frame - BRAND.endCard.barShineAt;
+  const shineF = frame - shineAt;
   return (
     <div
       style={{
         position: 'relative',
         height: img.box.h * s,
-        transform: `translateX(${(1 - progress) * 900}px) scale(${1 + 0.012 * Math.sin(frame / 5)})`,
+        transform: `translateX(${(1 - progress) * 900}px) scale(${pulse ? 1 + 0.012 * Math.sin(frame / 5) : 1})`,
         opacity: Math.min(1, progress * 1.5),
       }}
     >
@@ -281,9 +290,13 @@ const EndCard: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const logo = spring({frame, fps, config: {damping: 10}});
-  // Zeile 0 = eigene Leiste (BRAND.images.bar), danach END_CARD, dann die Bewerbungs-Zeile
-  const rows = END_CARD.length + 1;
+  // Zeile 0 = eigene Leiste (BRAND.images.bar), ggf. Zeile 1 = Banner "JAVA & BEDROCK",
+  // danach END_CARD, dann die Bewerbungs-Zeile
+  const editionsWidth = BRAND.endCard.editionsWidth;
+  const imageRows = editionsWidth ? 2 : 1;
+  const rows = END_CARD.length + imageRows;
   const barIn = spring({frame: frame - 6, fps, config: {damping: 13}});
+  const editionsIn = spring({frame: frame - 11, fps, config: {damping: 13}});
   const stepsIn = spring({frame: frame - 6 - rows * 5, fps, config: {damping: 13}});
   const linksIn = spring({frame: frame - 8 - (rows + 1) * 5, fps, config: {damping: 12}});
   return (
@@ -298,18 +311,34 @@ const EndCard: React.FC = () => {
       <div style={{transform: `scale(${logo})`}}>
         <Header scale={1.42} />
       </div>
+      {/* Abstände etwas enger als früher (80 / 26), weil das JAVA-&-BEDROCK-Banner höher ist als
+          die alte Text-Zeile – so bleibt "(Link in Bio)" über der unteren Safe-Zone (1540 px) */}
       <div
         style={{
-          marginTop: 80,
+          marginTop: 58,
           display: 'flex',
           flexDirection: 'column',
-          gap: 26,
+          gap: 22,
           width: 800,
         }}
       >
-        <EndCardBar progress={barIn} />
+        <EndCardImageRow
+          img={BRAND.images.bar}
+          visibleWidth={BRAND.endCard.barWidth}
+          shineAt={BRAND.endCard.barShineAt}
+          progress={barIn}
+          pulse
+        />
+        {editionsWidth ? (
+          <EndCardImageRow
+            img={BRAND.images.javaBedrock}
+            visibleWidth={editionsWidth}
+            shineAt={BRAND.endCard.editionsShineAt}
+            progress={editionsIn}
+          />
+        ) : null}
         {END_CARD.map((row, i) => {
-          const p = spring({frame: frame - 6 - (i + 1) * 5, fps, config: {damping: 13}});
+          const p = spring({frame: frame - 6 - (i + imageRows) * 5, fps, config: {damping: 13}});
           return (
             <div
               key={i}
@@ -444,9 +473,20 @@ export const GalacticfyBeta: React.FC = () => {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
-  // Bild-Wackeln: Raketen-Übergänge + Einschlag der EXKLUSIV-Pill
+  // Bild-Wackeln: Raketen-Übergänge + Banner-Einschläge (Segment 3) + Einschlag der EXKLUSIV-Pill
   const impacts = useMemo<Impact[]>(() => {
     const list: Impact[] = BRAND.wipes.map((w) => ({frame: sec(cutSeconds(w.cut)) - 1, amp: BRAND.wipeShake, len: 9}));
+    const checklistSeg = SEGMENTS.find((s) => s.visual === 'checklist');
+    if (checklistSeg && BRAND.bannerShake > 0) {
+      const d = sec(checklistSeg.to - checklistSeg.from);
+      BRAND.checklist.banners.forEach((b) =>
+        list.push({
+          frame: sec(checklistSeg.from) + cueFrame(b.cue, checklistSeg.text, d) + BRAND.checklist.slamFrames,
+          amp: BRAND.bannerShake,
+          len: 7,
+        }),
+      );
+    }
     const prefixSeg = SEGMENTS.find((s) => s.visual === 'prefix');
     if (prefixSeg) {
       const d = sec(prefixSeg.to - prefixSeg.from);
