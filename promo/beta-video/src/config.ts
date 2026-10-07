@@ -13,12 +13,19 @@ export const HEIGHT = 1920;
 /** Länge der End-Card in Sekunden (nach dem letzten Segment). */
 export const END_CARD_SECONDS = 3;
 
-/** Voiceover: Datei nach public/voiceover.mp3 legen und auf true setzen. */
-export const USE_VOICEOVER = false;
+/**
+ * Voiceover (public/voiceover.mp3, erzeugt mit scripts/make-voiceover.sh).
+ * false = stummes Video. Eigene Aufnahme: einfach die MP3 ersetzen (Zeitfenster s. SEGMENTS).
+ */
+export const USE_VOICEOVER = true;
 export const VOICEOVER_FILE = 'voiceover.mp3';
+/** Lautstärke des Voiceovers (0–1). */
+export const VOICEOVER_VOLUME = 1;
 
 export const BRAND = {
+  /** nur Info – das Logo im Video ist der echte Banner-Screenshot SCREENS.logo */
   name: 'GALACTICFY',
+  /** Sticker neben dem Logo */
   tag: 'BETA',
 };
 
@@ -26,9 +33,82 @@ export type SegmentVisual =
   | 'intro'
   | 'testers'
   | 'checklist'
-  | 'chat'
+  | 'prefix'
   | 'slots'
   | 'discord';
+
+// ------------------------------------------------------------
+//  Echte Screenshots vom Server (liegen in public/screens/)
+// ------------------------------------------------------------
+/** Ordner unter public/, in dem die Screenshot-Ausschnitte liegen. */
+export const SCREEN_DIR = 'screens';
+
+/** Rechteck in Pixeln innerhalb eines Screenshots (für Teil-Ausschnitte / Markierungen). */
+export type Region = {x: number; y: number; w: number; h: number};
+/** Ein Screenshot-Ausschnitt: Datei + Originalgröße in Pixeln. */
+export type ScreenImage = {file: string; width: number; height: number};
+
+/**
+ * Ausschnitte aus den Ingame-Screenshots (alle PNG, Originalauflösung, ohne Snipping-Tool-Popup).
+ * Wer einen Ausschnitt austauscht, muss width/height (und ggf. die Regionen) anpassen.
+ */
+export const SCREENS = {
+  /** GALACTICFY-Banner (Header + End-Card) */
+  logo: {file: 'logo.png', width: 458, height: 150},
+  /** Menü "Prefix wählen" (komplett, mit leerem Spieler-Inventar – Reserve) */
+  prefixMenu: {file: 'prefix-menu.png', width: 704, height: 884},
+  /** Menü "Prefix wählen": nur Titel + die sechs Truhen-Reihen + unterer GUI-Rahmen
+   *  (aus prefix-menu.png ausgeschnitten, ohne das leere Spieler-Inventar) */
+  prefixMenuChest: {file: 'prefix-menu-chest.png', width: 704, height: 528},
+  /** Chatzeile "[Beta Tester] Inhaber ✦ Leon185" */
+  chatBetaTester: {file: 'chat-betatester.png', width: 714, height: 36},
+  /** TAB-Liste mit "[Beta Tester] Inhaber ✦ Leon185" */
+  tabBetaTester: {file: 'tab-betatester.png', width: 792, height: 34},
+  /** Chat mit Broadcast / Postfach / Belohnungen */
+  chatFull: {file: 'chat-full.png', width: 1192, height: 144},
+  /** Bossbar "Erste Schritte (3/8) » Sammle Ressourcen in der Farmwelt" */
+  bossbar: {file: 'bossbar.png', width: 1468, height: 68},
+  /** komplettes Scoreboard */
+  scoreboard: {file: 'scoreboard.png', width: 470, height: 604},
+  /** Scoreboard-Zeile "Online › 1/20" */
+  scoreboardOnline: {file: 'scoreboard-online.png', width: 360, height: 66},
+  /** Scoreboard-Zeilen "Konto › 24.644" + "Nova › 250" */
+  scoreboardEconomy: {file: 'scoreboard-economy.png', width: 428, height: 140},
+  /** Banner "DISCORD /dc | TEAMSPEAK /ts" */
+  discordBanner: {file: 'discord-banner.png', width: 464, height: 150},
+} satisfies Record<string, ScreenImage>;
+
+/** Teil-Ausschnitte / Markierungen innerhalb der Screenshots (Pixel im jeweiligen PNG). */
+export const SCREEN_REGIONS = {
+  /** Bossbar: nur "Erste Schritte (3/8)" */
+  questTitle: {x: 0, y: 0, w: 476, h: 46},
+  /** Bossbar: nur der Fortschrittsbalken */
+  questBar: {x: 368, y: 45, w: 732, h: 20},
+  /** Prefix-Menü (prefix-menu-chest.png): Titelleiste – wird mit einem gut lesbaren
+   *  "Prefix wählen"-Schild überdeckt (Original: Cyan auf MC-Grau, kaum lesbar) */
+  prefixMenuTitle: {x: 4, y: 4, w: 696, h: 64},
+  /** Chatzeile: nur "[Beta Tester] Inhaber" (groß im Prefix-Segment) */
+  chatRankLine: {x: 0, y: 0, w: 466, h: 36},
+  /** Chatzeile: "[Beta Tester]" (bekommt einen Glanz-Effekt) */
+  chatPrefix: {x: 0, y: 0, w: 280, h: 36},
+  /** Scoreboard-Zeile: nur "/20" = Server-Maximum (wird markiert; "1" = gerade online) */
+  onlineMax: {x: 269, y: 12, w: 76, h: 42},
+  /** Discord-Banner: "/dc" (wird markiert) */
+  discordCommand: {x: 130, y: 96, w: 52, h: 28},
+} satisfies Record<string, Region>;
+
+/**
+ * Umrisse (Polygon in Screenshot-Pixeln), auf die ein Screenshot zugeschnitten wird –
+ * z. B. damit um das Discord-Banner (abgeschrägte Ecken + Planeten-Kuppel) keine
+ * Spielwelt-Pixel aus dem Original-Screenshot stehen bleiben.
+ */
+export const SCREEN_OUTLINES = {
+  discordBanner: [
+    [20, 22], [150, 22], [165, 15], [180, 10], [196, 6], [211, 5], [226, 4], [241, 5],
+    [256, 6], [272, 10], [287, 15], [302, 22], [447, 22], [461, 35], [461, 128],
+    [443, 146], [19, 146], [3, 130], [3, 31],
+  ],
+} satisfies Record<string, [number, number][]>;
 
 // ------------------------------------------------------------
 //  Gameplay-Clips (liegen in public/clips/)
@@ -100,7 +180,7 @@ export const SEGMENTS: Segment[] = [
     from: 11,
     to: 15,
     text: 'Als Dankeschön bekommst du einen **exklusiven Betatester-Prefix** und weitere Belohnungen!',
-    visual: 'chat',
+    visual: 'prefix',
     fontSize: 72,
     // Haus mit Grasdach -> rein in die Bar (leicht verlangsamt)
     clip: {file: 'see-bruecke.mp4', start: 0, end: 3.7, zoom: [1.12, 1.02], focusY: [50, 46]},
@@ -125,43 +205,86 @@ export const SEGMENTS: Segment[] = [
   },
 ];
 
-/** Checkliste in Segment 3 */
-export const CHECKLIST = [
-  'Systeme testen',
-  'Bugs finden',
-  'Menüs checken',
-  'Wirtschaft balancen',
-];
-
-/** Minecraft-Chat-Mockup in Segment 4 */
-export const CHAT = {
-  prefix: 'BETATESTER',
-  player: 'Steve',
-  message: 'Danke für die Belohnungen! <3',
-  systemLine: 'Du hast den Rang BETATESTER erhalten!',
+/** Segment 1: "Server lädt"-Balken */
+export const INTRO = {
+  label: 'SERVER LÄDT…',
+  /** bis zu welchem Prozentwert der Balken läuft */
+  percent: 73,
 };
 
-/** Slot-Zähler in Segment 5 */
+/** Segment 2: "20 BETATESTER" + Editionen */
+export const TESTERS = {
+  count: '20',
+  label: 'BETATESTER',
+  editions: [
+    {label: 'JAVA', color: '#e8762b'},
+    {label: 'BEDROCK', color: '#3aa655'},
+  ],
+};
+
+/**
+ * Checkliste in Segment 3. at = Sekunden ab Segmentstart, wann der Haken kommt
+ * (passend zum gesprochenen Wort). screen = echter Screenshot, der unter der Liste erscheint:
+ *  - 'quest'   Bossbar "Erste Schritte (3/8)"
+ *  - 'glitch'  der vorige Screenshot "verbuggt" kurz + BUG-Sticker
+ *  - 'menu'    Vorschau auf das Menü "Prefix wählen"
+ *  - 'economy' Scoreboard "Konto › 24.644" / "Nova › 250"
+ */
+export type ChecklistScreen = 'quest' | 'glitch' | 'menu' | 'economy';
+export const CHECKLIST: {text: string; at: number; screen: ChecklistScreen}[] = [
+  {text: 'Systeme testen', at: 0.35, screen: 'quest'},
+  {text: 'Bugs finden', at: 1.25, screen: 'glitch'},
+  {text: 'Menüs checken', at: 2.1, screen: 'menu'},
+  {text: 'Wirtschaft balancen', at: 3.3, screen: 'economy'},
+];
+/** Sticker, der bei "Bugs finden" aufploppt. */
+export const BUG_STICKER = 'BUG!';
+
+/** Segment 4: echtes Menü "Prefix wählen" + echte Chatzeile mit [Beta Tester]. Zeiten ab Segmentstart. */
+export const PREFIX = {
+  /** Lesbares Schild über der Titelleiste des echten Menüs (Original-Titel ist kaum lesbar) */
+  menuTitle: 'Prefix wählen',
+  /** Menü ploppt auf */
+  menuAt: 0.1,
+  /** Chatzeile "[Beta Tester] Inhaber ✦ Leon185" (bei "Betatester-Prefix") */
+  chatAt: 1.45,
+  /** Geschenk (bei "weitere Belohnungen") */
+  rewardAt: 3.0,
+};
+
+/**
+ * Segment 5: echte Scoreboard-Zeile "Online › 1/20" (markiert wird nur "/20" = Server-Maximum)
+ * + 20 freie Slots. Die Slots bleiben "frei" (leere, leuchtende Rahmen) – sie füllen sich
+ * NICHT, damit es nicht nach "schon ausgebucht" aussieht. Zeiten ab Segmentstart.
+ */
 export const SLOTS = {
   total: 20,
-  /** Auf wie viele freie Plätze der Zähler herunterzählt */
-  countDownTo: 3,
+  /** Bis wann alle 20 freien Slots aufgeploppt sind (bei "nur 20 Plätze") */
+  filledAt: 1.9,
+  /** Ab wann es rot blinkt (bei "wer zuerst kommt") */
+  alarmAt: 2.55,
   label: 'FREIE PLÄTZE',
+  alarmLabel: 'SCHNELL SEIN!',
 };
 
-/** Discord-Segment */
+/** Discord-Segment: echtes Banner "DISCORD /dc | TEAMSPEAK /ts" + Button. Zeiten ab Segmentstart. */
 export const DISCORD = {
   button: 'Ticket öffnen',
-  hint: 'Link in der Bio',
+  /** Wann "/dc" im Banner markiert wird (bei "Discord") */
+  highlightAt: 0.9,
+  /** Wann der Cursor den Button klickt (bei "Ticket") */
+  clickAt: 1.7,
 };
 
 /** End-Card */
 export const END_CARD: {icon: 'rocket' | 'gamepad' | 'gift' | 'pointer'; text: string}[] = [
   {icon: 'rocket', text: '**20 BETATESTER** GESUCHT'},
   {icon: 'gamepad', text: '**Java** & **Bedrock**'},
-  {icon: 'gift', text: 'Exklusiver **Prefix** + Belohnungen'},
+  {icon: 'gift', text: 'Prefix **[Beta Tester]** + Belohnungen'},
   {icon: 'pointer', text: 'Jetzt bewerben – **Discord**'},
 ];
+/** Kleine Info-Kacheln unter den End-Card-Zeilen (Website + Discord-Befehl). */
+export const END_CARD_LINKS = ['**galacticfy.de**', 'Discord: **/dc**'];
 export const END_CARD_FOOTER = '(Link in Bio)';
 /** Stark weichgezeichneter Clip hinter der End-Card (null = nur Weltraum-Hintergrund). */
 export const END_CARD_CLIP: ClipShot | null = {

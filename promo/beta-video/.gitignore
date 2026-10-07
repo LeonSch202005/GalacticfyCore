@@ -7,7 +7,8 @@ dist/
 .DS_Store
 
 # Root-.gitignore ignoriert "out/" (IntelliJ) – hier wieder freigeben,
-# aber nur das finale Video einchecken (Kontroll-Stills & Temp-Dateien nicht).
+# aber nur die finalen Videos einchecken (Kontroll-Stills & Temp-Dateien nicht).
 !out/
 out/*
 !out/galacticfy-betatester.mp4
+!out/galacticfy-betatester-ohne-ton.mp4

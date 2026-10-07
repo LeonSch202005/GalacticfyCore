@@ -76,6 +76,7 @@ export const KineticCaption: React.FC<{
   const {fps} = useVideoConfig();
   const words = parseRich(text);
   const step = revealFrames / Math.max(1, words.length);
+  const columnGap = fontSize * 0.26;
 
   return (
     <div
@@ -91,7 +92,7 @@ export const KineticCaption: React.FC<{
         display: 'flex',
         flexWrap: 'wrap',
         justifyContent: 'center',
-        columnGap: fontSize * 0.26,
+        columnGap,
         rowGap: fontSize * 0.08,
       }}
     >
@@ -106,20 +107,27 @@ export const KineticCaption: React.FC<{
           extrapolateLeft: 'clamp',
           extrapolateRight: 'clamp',
         });
-        // Highlight-Wörter bekommen einen extra "Punch"
-        const punch = w.highlight
-          ? 1 +
-            0.18 *
-              Math.max(0, Math.sin(Math.min(Math.PI, ((frame - start) / 14) * Math.PI)))
-          : 1;
-        const y = interpolate(s, [0, 1], [40, 0]);
+        // Wörter dürfen beim Reinploppen nur so weit über 100 % wachsen, dass sie pro Seite
+        // höchstens ~22 % des Wortabstands einnehmen (Breite grob geschätzt) – sonst liest
+        // man kurz "AlsDankeschön", "nichtfertig" oder "unserenDiscordund".
+        const chars = w.pieces.reduce((n, p) => n + p.text.length, 0);
+        const estWidth = Math.max(1, chars) * fontSize * 0.6;
+        const maxGrow = Math.min(0.1, (2 * columnGap * 0.22) / estWidth);
+        // Highlight-Wörter: kein Überschwingen, dafür ein "Punch" (kurz größer + leicht nach oben)
+        const base = Math.min(0.4 + 0.6 * s, w.highlight ? 1 : 1 + maxGrow);
+        const punchT = w.highlight
+          ? Math.max(0, Math.sin(Math.min(Math.PI, ((frame - start) / 14) * Math.PI)))
+          : 0;
+        const punch = 1 + maxGrow * punchT;
+        const lift = -fontSize * 0.06 * punchT;
+        const y = interpolate(s, [0, 1], [40, 0]) + lift;
         return (
           <span
             key={i}
             style={{
               display: 'inline-block',
               opacity,
-              transform: `translateY(${y}px) scale(${(0.4 + 0.6 * s) * punch})`,
+              transform: `translateY(${y}px) scale(${base * punch})`,
             }}
           >
             {renderPieces(w)}

@@ -126,6 +126,20 @@ export const ICONS = {
     '....KWK...',
     '....KK....',
   ],
+  bug: [
+    '...W....W...',
+    '....W..W....',
+    '...WKKKKW...',
+    '..KKYKKYKK..',
+    'W.KKKKKKKK.W',
+    '.WRRRWWRRRW.',
+    '..RRRWWRRR..',
+    'W.RKRWWRKR.W',
+    '.WRRRWWRRRW.',
+    '..RRKWWKRR..',
+    'W..RRWWRR..W',
+    '....RRRR....',
+  ],
 } as const;
 
 export type IconName = keyof typeof ICONS;

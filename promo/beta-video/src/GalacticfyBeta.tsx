@@ -19,35 +19,42 @@ import {
   END_CARD_CLIP_BLUR,
   END_CARD_CLIP_DIM,
   END_CARD_FOOTER,
+  END_CARD_LINKS,
   FONT_HEAVY,
   FONT_PIXEL,
   MAIN_SECONDS,
+  SCREENS,
   SEGMENTS,
   Segment,
   SegmentVisual,
   TOTAL_FRAMES,
   USE_VOICEOVER,
   VOICEOVER_FILE,
+  VOICEOVER_VOLUME,
   sec,
 } from './config';
 import {KineticCaption, StaticRich} from './RichText';
 import {PixelIcon} from './PixelIcon';
+import {Screen} from './Screen';
 import {
-  ChatVisual,
   ChecklistVisual,
   DiscordVisual,
   IntroVisual,
+  PrefixVisual,
   SlotsVisual,
   TestersVisual,
 } from './Visuals';
 
-// Layout (1080x1920): Header oben ab 150px, Visual-Bereich 290–1085, Caption 1110–1540,
-// unterste ~380px bleiben frei (TikTok/Reels-UI). Dahinter läuft Vollbild-Gameplay.
-const SAFE_TOP = 150;
-const VISUAL_TOP = 290;
-const VISUAL_HEIGHT = 795;
+// Layout (1080x1920): Header (echtes Logo) oben ab 140px, Visual-Bereich 300–1085,
+// Caption 1110–1540. Unterste ~380px und rechte ~140px bleiben frei (TikTok/Reels-UI:
+// Beschreibung unten, Like/Kommentar-Leiste rechts). Dahinter läuft Vollbild-Gameplay.
+const SAFE_TOP = 140;
+const VISUAL_TOP = 312;
+const VISUAL_HEIGHT = 773;
 const CAPTION_TOP = 1110;
 const CAPTION_HEIGHT = 430;
+const CAPTION_LEFT = 80;
+const CAPTION_RIGHT = 140;
 
 /** Kompakte Visuals sitzen oben (unter dem Logo) oder unten (direkt über der Caption),
  *  damit das Gameplay in der Bildmitte frei bleibt. */
@@ -55,7 +62,7 @@ const VISUAL_ALIGN: Record<SegmentVisual, 'top' | 'bottom'> = {
   intro: 'top',
   testers: 'bottom',
   checklist: 'top',
-  chat: 'bottom',
+  prefix: 'bottom',
   slots: 'top',
   discord: 'bottom',
 };
@@ -64,36 +71,35 @@ const VISUALS = {
   intro: IntroVisual,
   testers: TestersVisual,
   checklist: ChecklistVisual,
-  chat: ChatVisual,
+  prefix: PrefixVisual,
   slots: SlotsVisual,
   discord: DiscordVisual,
 };
 
+/** Echtes GALACTICFY-Banner aus dem Scoreboard + "BETA"-Sticker. */
 const Header: React.FC<{scale?: number}> = ({scale = 1}) => {
   const frame = useCurrentFrame();
-  const glow = 18 + Math.sin(frame / 8) * 6;
+  const glow = 14 + Math.sin(frame / 8) * 6;
   return (
-    <div style={{display: 'flex', alignItems: 'center', gap: 18 * scale}}>
+    <div style={{position: 'relative'}}>
       <div
         style={{
-          fontFamily: FONT_HEAVY,
-          fontWeight: 900,
-          fontSize: 76 * scale,
-          letterSpacing: 4 * scale,
-          color: COLORS.white,
-          textShadow: `0 0 ${glow}px ${COLORS.purple}, 0 0 ${glow * 2}px ${COLORS.purple}, ${5 * scale}px ${5 * scale}px 0 ${COLORS.purpleDeep}`,
+          filter: `drop-shadow(0 0 ${glow * scale}px ${COLORS.purple}) drop-shadow(0 8px 18px rgba(0,0,0,0.6))`,
         }}
       >
-        {BRAND.name}
+        <Screen img={SCREENS.logo} scale={scale} />
       </div>
       <div
         style={{
+          position: 'absolute',
+          right: -30 * scale,
+          bottom: -12 * scale,
           fontFamily: FONT_PIXEL,
           fontWeight: 700,
-          fontSize: 34 * scale,
+          fontSize: 30 * scale,
           color: COLORS.bg,
           background: COLORS.cyan,
-          padding: `${6 * scale}px ${12 * scale}px`,
+          padding: `${5 * scale}px ${11 * scale}px`,
           boxShadow: `0 0 ${20 * scale}px ${COLORS.cyan}, inset -${5 * scale}px -${5 * scale}px 0 rgba(0,0,0,0.3)`,
           transform: 'rotate(-6deg)',
         }}
@@ -136,8 +142,8 @@ const SegmentScene: React.FC<{seg: Segment}> = ({seg}) => {
         style={{
           position: 'absolute',
           top: CAPTION_TOP,
-          left: 70,
-          right: 70,
+          left: CAPTION_LEFT,
+          right: CAPTION_RIGHT,
           height: CAPTION_HEIGHT,
           display: 'flex',
           alignItems: 'center',
@@ -159,53 +165,54 @@ const EndCard: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const logo = spring({frame, fps, config: {damping: 10}});
+  const linksIn = spring({frame: frame - 8 - END_CARD.length * 5, fps, config: {damping: 12}});
   return (
     <AbsoluteFill
       style={{
-        paddingTop: SAFE_TOP + 110,
+        paddingTop: SAFE_TOP + 170,
         alignItems: 'center',
         background: 'radial-gradient(ellipse 80% 50% at 50% 40%, rgba(91,26,168,0.45), transparent 75%)',
       }}
     >
       <div style={{transform: `scale(${logo})`}}>
-        <Header scale={1.25} />
+        <Header scale={1.42} />
       </div>
       <div
         style={{
-          marginTop: 110,
+          marginTop: 80,
           display: 'flex',
           flexDirection: 'column',
-          gap: 40,
-          width: 940,
+          gap: 26,
+          width: 800,
         }}
       >
         {END_CARD.map((row, i) => {
-          const p = spring({frame: frame - 8 - i * 6, fps, config: {damping: 13}});
+          const p = spring({frame: frame - 6 - i * 5, fps, config: {damping: 13}});
+          const last = i === END_CARD.length - 1;
           return (
             <div
               key={i}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 34,
-                padding: '28px 34px',
-                background: 'rgba(10,5,30,0.72)',
-                border: `5px solid ${i === END_CARD.length - 1 ? COLORS.cyan : 'rgba(180,77,255,0.75)'}`,
-                boxShadow:
-                  i === END_CARD.length - 1
-                    ? `0 0 ${30 + Math.sin(frame / 5) * 14}px ${COLORS.cyan}`
-                    : `0 0 22px rgba(180,77,255,0.4)`,
+                gap: 24,
+                padding: '22px 24px',
+                background: 'rgba(10,5,30,0.74)',
+                border: `5px solid ${last ? COLORS.cyan : 'rgba(180,77,255,0.75)'}`,
+                boxShadow: last
+                  ? `0 0 ${30 + Math.sin(frame / 5) * 14}px ${COLORS.cyan}`
+                  : `0 0 22px rgba(180,77,255,0.4)`,
                 transform: `translateX(${(1 - p) * 900}px)`,
                 opacity: Math.min(1, p * 1.5),
               }}
             >
-              <PixelIcon name={row.icon} size={90} glow={COLORS.purple} />
+              <PixelIcon name={row.icon} size={70} glow={COLORS.purple} />
               <StaticRich
                 text={row.text}
                 style={{
                   fontFamily: FONT_HEAVY,
                   fontWeight: 900,
-                  fontSize: 54,
+                  fontSize: 46,
                   lineHeight: 1.15,
                   color: COLORS.white,
                   textShadow: '0 4px 0 rgba(0,0,0,0.6)',
@@ -215,24 +222,61 @@ const EndCard: React.FC = () => {
           );
         })}
       </div>
+      {/* Website + Discord-Befehl */}
       <div
         style={{
-          marginTop: 40,
+          marginTop: 36,
+          display: 'flex',
+          gap: 22,
+          width: 800,
+          transform: `scale(${0.7 + 0.3 * linksIn})`,
+          opacity: Math.min(1, linksIn * 1.5),
+        }}
+      >
+        {END_CARD_LINKS.map((t) => (
+          <div
+            key={t}
+            style={{
+              flex: 1,
+              textAlign: 'center',
+              padding: '20px 12px',
+              background: 'rgba(46,242,255,0.12)',
+              border: `4px solid ${COLORS.cyan}b3`,
+              boxShadow: `0 0 20px rgba(46,242,255,0.35)`,
+            }}
+          >
+            <StaticRich
+              text={t}
+              style={{
+                fontFamily: FONT_PIXEL,
+                fontWeight: 700,
+                fontSize: 42,
+                color: COLORS.white,
+                textShadow: '3px 3px 0 rgba(0,0,0,0.6)',
+                whiteSpace: 'nowrap',
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      <div
+        style={{
+          marginTop: 48,
           display: 'flex',
           alignItems: 'center',
           gap: 20,
           fontFamily: FONT_PIXEL,
           fontWeight: 700,
-          fontSize: 52,
+          fontSize: 50,
           color: COLORS.gold,
           textShadow: '4px 4px 0 #3a2400',
           opacity: interpolate(frame, [30, 40], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
           transform: `translateY(${Math.sin(frame / 5) * 8}px)`,
         }}
       >
-        <PixelIcon name="arrowUp" size={56} glow={COLORS.cyan} />
+        <PixelIcon name="arrowUp" size={52} glow={COLORS.cyan} />
         {END_CARD_FOOTER}
-        <PixelIcon name="arrowUp" size={56} glow={COLORS.cyan} />
+        <PixelIcon name="arrowUp" size={52} glow={COLORS.cyan} />
       </div>
     </AbsoluteFill>
   );
@@ -331,8 +375,8 @@ export const GalacticfyBeta: React.FC = () => {
         <CutFlash color={COLORS.purple} strength={0.9} length={12} />
       </Sequence>
 
-      {/* Voiceover: public/voiceover.mp3 ablegen und USE_VOICEOVER in config.ts auf true setzen */}
-      {USE_VOICEOVER ? <Audio src={staticFile(VOICEOVER_FILE)} /> : null}
+      {/* Voiceover: public/voiceover.mp3 (USE_VOICEOVER in config.ts, false = stumm) */}
+      {USE_VOICEOVER ? <Audio src={staticFile(VOICEOVER_FILE)} volume={VOICEOVER_VOLUME} /> : null}
     </AbsoluteFill>
   );
 };

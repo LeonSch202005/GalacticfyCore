@@ -1,15 +1,24 @@
 import React from 'react';
-import {interpolate, spring, useCurrentFrame, useVideoConfig, Easing} from 'remotion';
+import {Easing, interpolate, random, spring, useCurrentFrame, useVideoConfig} from 'remotion';
 import {
-  CHAT,
+  BUG_STICKER,
   CHECKLIST,
+  ChecklistScreen,
   COLORS,
   DISCORD,
   FONT_HEAVY,
   FONT_PIXEL,
+  INTRO,
+  PREFIX,
+  SCREEN_OUTLINES,
+  SCREEN_REGIONS,
+  SCREENS,
   SLOTS,
+  TESTERS,
+  sec,
 } from './config';
 import {PixelIcon} from './PixelIcon';
+import {Highlight, Screen} from './Screen';
 
 type VProps = {duration: number};
 
@@ -20,6 +29,10 @@ const usePop = (delay = 0, damping = 12) => {
   const {fps} = useVideoConfig();
   return spring({frame: frame - delay, fps, config: {damping, stiffness: 160, mass: 0.7}});
 };
+
+/** Neon-Glow für echte Screenshots (drop-shadow folgt auch transparenten Rändern). */
+const neon = (color: string, strength = 1) =>
+  `drop-shadow(0 0 ${14 * strength}px ${color}) drop-shadow(0 10px 22px rgba(0,0,0,0.55))`;
 
 /* ---------- Glas-Panel: halbtransparent, damit das Gameplay durchscheint ---------- */
 export const Glass: React.FC<{
@@ -89,7 +102,7 @@ const PixelPlanet: React.FC<{size: number}> = ({size}) => {
 export const IntroVisual: React.FC<VProps> = ({duration}) => {
   const frame = useCurrentFrame();
   const pop = usePop(2, 11);
-  const progress = interpolate(frame, [8, duration * 0.6], [0, 73], {
+  const progress = interpolate(frame, [8, duration * 0.6], [0, INTRO.percent], {
     ...clamp,
     easing: Easing.out(Easing.cubic),
   });
@@ -121,7 +134,7 @@ export const IntroVisual: React.FC<VProps> = ({duration}) => {
             textShadow: '3px 3px 0 #3a2400',
           }}
         >
-          SERVER LÄDT… {Math.round(progress)}%{blink ? '_' : ' '}
+          {INTRO.label} {Math.round(progress)}%{blink ? '_' : ' '}
         </div>
         <div
           style={{
@@ -165,9 +178,9 @@ const EditionBadge: React.FC<{label: string; color: string; from: number; delay:
         opacity: Math.min(1, p * 1.5),
         fontFamily: FONT_HEAVY,
         fontWeight: 900,
-        fontSize: 40,
+        fontSize: 38,
         color: '#fff',
-        padding: '14px 24px',
+        padding: '12px 22px',
         background: `linear-gradient(180deg, ${color}, rgba(0,0,0,0.5))`,
         border: `4px solid ${color}`,
         boxShadow: `0 0 24px ${color}, inset -6px -6px 0 rgba(0,0,0,0.3)`,
@@ -191,8 +204,8 @@ export const TestersVisual: React.FC<VProps> = () => {
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 34,
-        padding: '18px 38px 22px 30px',
+        gap: 28,
+        padding: '14px 32px 18px 24px',
         transform: `scale(${0.85 + 0.15 * panel})`,
         opacity: Math.min(1, panel * 1.4),
       }}
@@ -201,7 +214,7 @@ export const TestersVisual: React.FC<VProps> = () => {
         style={{
           fontFamily: FONT_HEAVY,
           fontWeight: 900,
-          fontSize: 230,
+          fontSize: 200,
           lineHeight: 1,
           color: COLORS.white,
           transform: `scale(${p})`,
@@ -209,259 +222,491 @@ export const TestersVisual: React.FC<VProps> = () => {
           WebkitTextStroke: `5px ${COLORS.cyan}`,
         }}
       >
-        20
+        {TESTERS.count}
       </div>
       <div style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 22}}>
         <div
           style={{
             fontFamily: FONT_PIXEL,
             fontWeight: 700,
-            fontSize: 54,
+            fontSize: 50,
             color: COLORS.gold,
-            letterSpacing: 4,
+            letterSpacing: 3,
             textShadow: '4px 4px 0 #3a2400',
             opacity: interpolate(frame, [6, 14], [0, 1], clamp),
           }}
         >
-          BETATESTER
+          {TESTERS.label}
         </div>
         <div style={{display: 'flex', gap: 20}}>
-          <EditionBadge label="JAVA" color="#e8762b" from={-500} delay={26} />
-          <EditionBadge label="BEDROCK" color="#3aa655" from={500} delay={36} />
+          {TESTERS.editions.map((e, i) => (
+            <EditionBadge key={e.label} label={e.label} color={e.color} from={i % 2 ? 500 : -500} delay={26 + i * 10} />
+          ))}
         </div>
       </div>
     </Glass>
   );
 };
 
-/* ---------- 3: Checkliste ---------- */
-export const ChecklistVisual: React.FC<VProps> = ({duration}) => {
-  const frame = useCurrentFrame();
-  const {fps} = useVideoConfig();
-  const panel = usePop(0, 14);
-  // Haken passend zum gesprochenen Satz verteilen
-  const slot = (duration - 20) / CHECKLIST.length;
-  return (
-    <Glass
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 14,
-        width: 820,
-        padding: '22px 26px',
-        transform: `scaleY(${0.6 + 0.4 * panel})`,
-        transformOrigin: 'top center',
-        opacity: Math.min(1, panel * 1.5),
-      }}
-    >
-      {CHECKLIST.map((item, i) => {
-        const appear = spring({frame: frame - 4 - i * 5, fps, config: {damping: 14}});
-        const checkAt = 10 + i * slot;
-        const check = spring({frame: frame - checkAt, fps, config: {damping: 9, stiffness: 200}});
-        const done = frame >= checkAt;
-        return (
-          <div
-            key={item}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 28,
-              padding: '12px 20px',
-              transform: `translateX(${(1 - appear) * (i % 2 ? 500 : -500)}px)`,
-              opacity: Math.min(1, appear * 1.5),
-              background: done ? 'rgba(46,242,255,0.16)' : 'rgba(255,255,255,0.04)',
-              border: `4px solid ${done ? COLORS.cyan : 'rgba(180,77,255,0.45)'}`,
-              boxShadow: done ? `0 0 22px rgba(46,242,255,0.45)` : 'none',
-            }}
-          >
-            <div
-              style={{
-                width: 64,
-                height: 64,
-                background: '#1a1030',
-                border: '4px solid #fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: 'inset -5px -5px 0 rgba(0,0,0,0.5)',
-                flexShrink: 0,
-              }}
-            >
-              {done ? <PixelIcon name="check" size={54 * check} glow="#3dff7a" /> : null}
-            </div>
-            <div
-              style={{
-                fontFamily: FONT_HEAVY,
-                fontWeight: 900,
-                fontSize: 48,
-                color: done ? COLORS.white : COLORS.muted,
-                textShadow: '0 3px 0 rgba(0,0,0,0.6)',
-              }}
-            >
-              {item}
-            </div>
-          </div>
-        );
-      })}
-    </Glass>
-  );
-};
+/* ---------- 3: Checkliste + echter Screenshot zum aktuellen Punkt ---------- */
 
-/* ---------- 4: Minecraft-Chat ---------- */
-export const ChatVisual: React.FC<VProps> = () => {
-  const frame = useCurrentFrame();
-  const giftPop = usePop(4, 8);
-  const box = usePop(0, 14);
-  const line1 = frame >= 10;
-  const line2 = frame >= 28;
-  const typed = Math.max(0, Math.floor((frame - 42) / 1.6));
-  const msg = CHAT.message.slice(0, typed);
-  const caret = Math.floor(frame / 8) % 2 === 0 && typed < CHAT.message.length + 6;
-  const shine = interpolate(frame % 45, [0, 45], [-120, 220]);
-  const mcShadow = (c: string) => `4px 4px 0 ${c}`;
+/** Bossbar-Quest, zweizeilig: "Erste Schritte (3/8)" + Fortschrittsbalken. */
+const QuestCard: React.FC = () => (
+  <Glass
+    accent={COLORS.cyan}
+    style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 14}}
+  >
+    <Screen img={SCREENS.bossbar} region={SCREEN_REGIONS.questTitle} scale={1.45} />
+    <Screen img={SCREENS.bossbar} region={SCREEN_REGIONS.questBar} scale={0.94} />
+  </Glass>
+);
+
+/**
+ * Echtes Menü "Prefix wählen" – nur Titel + Truhen-Reihen (ohne leeres Spieler-Inventar).
+ * Der Original-Titel (Cyan auf MC-Grau, ~1,4:1 Kontrast) wird von einem dunklen Schild
+ * mit demselben Text in der Video-Schrift überdeckt, damit man ihn auf dem Handy lesen kann.
+ */
+const PrefixMenu: React.FC<{scale: number}> = ({scale}) => {
+  const t = SCREEN_REGIONS.prefixMenuTitle;
   return (
-    <div style={{position: 'relative', width: 980}}>
+    <div style={{position: 'relative'}}>
+      <Screen img={SCREENS.prefixMenuChest} scale={scale} />
       <div
         style={{
           position: 'absolute',
-          right: 10,
-          top: -150,
-          transform: `scale(${giftPop}) translateY(${Math.sin(frame / 7) * 8}px) rotate(${Math.sin(frame / 11) * 6}deg)`,
-        }}
-      >
-        <PixelIcon name="gift" size={150} glow={COLORS.gold} />
-      </div>
-      <div
-        style={{
-          padding: '24px 30px',
-          background: 'rgba(0,0,0,0.6)',
-          borderLeft: `6px solid ${COLORS.purple}`,
-          boxShadow: `0 0 26px rgba(180,77,255,0.35)`,
-          backdropFilter: 'blur(6px)',
-          transform: `scaleY(${box})`,
-          transformOrigin: 'bottom center',
+          left: t.x * scale,
+          top: t.y * scale,
+          width: t.w * scale,
+          height: t.h * scale,
+          boxSizing: 'border-box',
+          display: 'flex',
+          alignItems: 'center',
+          paddingLeft: 22 * scale,
+          background: 'linear-gradient(180deg, rgba(24,12,54,0.97), rgba(10,5,30,0.97))',
+          borderBottom: `${Math.max(3, Math.round(5 * scale))}px solid ${COLORS.cyan}`,
           fontFamily: FONT_PIXEL,
           fontWeight: 700,
-          fontSize: 35,
-          lineHeight: 1.45,
-          color: '#fff',
-          textShadow: mcShadow('#3f3f3f'),
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
+          fontSize: Math.round(t.h * scale * 0.74),
+          lineHeight: 1,
+          color: COLORS.cyan,
+          letterSpacing: 1,
+          textShadow: `0 0 10px rgba(46,242,255,0.55), 2px 2px 0 #000`,
+          whiteSpace: 'nowrap',
         }}
       >
-        <div style={{opacity: line1 ? 1 : 0, color: '#55ff55', textShadow: mcShadow('#153f15')}}>
-          ✔ {CHAT.systemLine}
-        </div>
-        <div style={{opacity: line2 ? 1 : 0}}>
-          <span
-            style={{
-              position: 'relative',
-              display: 'inline-block',
-              verticalAlign: 'top',
-              color: COLORS.gold,
-              textShadow: `${mcShadow('#3f2a00')}, 0 0 18px ${COLORS.gold}`,
-              overflow: 'hidden',
-            }}
-          >
-            <span style={{color: COLORS.purple, textShadow: mcShadow('#2a0d4a')}}>[</span>
-            {CHAT.prefix}
-            <span style={{color: COLORS.purple, textShadow: mcShadow('#2a0d4a')}}>]</span>
-            <span
-              style={{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                left: `${shine}%`,
-                width: '30%',
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent)',
-                transform: 'skewX(-20deg)',
-              }}
-            />
-          </span>{' '}
-          <span style={{color: '#fff'}}>{CHAT.player}</span>
-          <span style={{color: '#aaa'}}>: </span>
-          <span style={{color: '#fff'}}>
-            {msg}
-            {caret ? '_' : ''}
-          </span>
-        </div>
+        {PREFIX.menuTitle}
       </div>
     </div>
   );
 };
 
-/* ---------- 5: 20 Plätze ---------- */
-export const SlotsVisual: React.FC<VProps> = ({duration}) => {
+const MenuCard: React.FC = () => (
+  <div style={{filter: neon(COLORS.purple, 1.3)}}>
+    <PrefixMenu scale={0.56} />
+  </div>
+);
+
+const EconomyCard: React.FC = () => (
+  <Glass accent={COLORS.gold} style={{padding: 12}}>
+    <Screen img={SCREENS.scoreboardEconomy} scale={1.6} />
+  </Glass>
+);
+
+const CARD: Record<Exclude<ChecklistScreen, 'glitch'>, React.FC> = {
+  quest: QuestCard,
+  menu: MenuCard,
+  economy: EconomyCard,
+};
+
+/** Kurzer "Bug"-Glitch: RGB-Versatz + verschobene Streifen. */
+const Glitch: React.FC<{amount: number; children: React.ReactNode}> = ({amount, children}) => {
+  const frame = useCurrentFrame();
+  if (amount <= 0.01) return <>{children}</>;
+  const jx = (random(`gx${frame}`) - 0.5) * 34 * amount;
+  const bands = [0, 1, 2].map((b) => ({
+    top: random(`gt${frame}-${b}`) * 80,
+    h: 6 + random(`gh${frame}-${b}`) * 16,
+    dx: (random(`gd${frame}-${b}`) - 0.5) * 90 * amount,
+  }));
+  return (
+    <div style={{position: 'relative', transform: `translateX(${jx}px)`}}>
+      <div
+        style={{
+          filter: `drop-shadow(${7 * amount}px 0 0 rgba(255,40,90,0.85)) drop-shadow(${-7 * amount}px 0 0 rgba(40,240,255,0.85))`,
+        }}
+      >
+        {children}
+      </div>
+      {bands.map((b, i) => (
+        <div
+          key={i}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            clipPath: `inset(${b.top}% 0 ${Math.max(0, 100 - b.top - b.h)}% 0)`,
+            transform: `translateX(${b.dx}px)`,
+          }}
+        >
+          {children}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const BugSticker: React.FC<{progress: number}> = ({progress}) => {
+  const frame = useCurrentFrame();
+  if (progress <= 0) return null;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        right: 10,
+        top: '100%',
+        marginTop: 6,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '8px 20px 8px 14px',
+        background: 'rgba(30,4,16,0.92)',
+        border: '5px solid #ff3355',
+        boxShadow: '0 0 28px #ff3355, inset 0 0 14px rgba(255,51,85,0.4)',
+        fontFamily: FONT_HEAVY,
+        fontWeight: 900,
+        fontSize: 46,
+        color: '#ff4466',
+        textShadow: '0 0 14px #ff3355, 0 3px 0 rgba(0,0,0,0.6)',
+        transform: `scale(${progress}) rotate(${-6 + Math.sin(frame / 6) * 3}deg)`,
+        zIndex: 2,
+      }}
+    >
+      <PixelIcon name="bug" size={52} glow="#ff3355" />
+      {BUG_STICKER}
+    </div>
+  );
+};
+
+export const ChecklistVisual: React.FC<VProps> = ({duration}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const panel = usePop(0, 14);
+  const cues = CHECKLIST.map((c) => sec(c.at));
+  let active = -1;
+  cues.forEach((c, i) => {
+    if (frame >= c) active = i;
+  });
+
+  // Jede Karte (außer 'glitch') bleibt sichtbar, bis die nächste Karte kommt.
+  const cards = CHECKLIST.map((c, i) => ({screen: c.screen, from: cues[i]})).filter(
+    (c): c is {screen: Exclude<ChecklistScreen, 'glitch'>; from: number} => c.screen !== 'glitch',
+  );
+  const glitches = CHECKLIST.map((c, i) => (c.screen === 'glitch' ? cues[i] : null)).filter(
+    (c): c is number => c !== null,
+  );
+
+  return (
+    <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 30}}>
+      <Glass
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+          width: 760,
+          padding: '16px 20px',
+          // Zeilen dürfen beim Einschieben nicht über das Panel hinausragen
+          overflow: 'hidden',
+          transform: `scaleY(${0.6 + 0.4 * panel})`,
+          transformOrigin: 'top center',
+          opacity: Math.min(1, panel * 1.5),
+        }}
+      >
+        {CHECKLIST.map((item, i) => {
+          const appear = spring({
+            frame: frame - 2 - i * 3,
+            fps,
+            config: {damping: 16, stiffness: 170, mass: 0.7, overshootClamping: true},
+          });
+          const check = spring({frame: frame - cues[i], fps, config: {damping: 9, stiffness: 200}});
+          const done = frame >= cues[i];
+          const isActive = i === active;
+          return (
+            <div
+              key={item.text}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 24,
+                padding: '8px 16px',
+                transform: `translateX(${(1 - appear) * (i % 2 ? 40 : -40)}px) scale(${0.94 + 0.06 * appear})`,
+                opacity: Math.min(1, appear * 1.5),
+                background: isActive ? 'rgba(46,242,255,0.2)' : done ? 'rgba(46,242,255,0.08)' : 'rgba(255,255,255,0.04)',
+                border: `4px solid ${done ? (isActive ? COLORS.cyan : 'rgba(46,242,255,0.55)') : 'rgba(180,77,255,0.45)'}`,
+                boxShadow: isActive ? `0 0 24px rgba(46,242,255,0.55)` : 'none',
+              }}
+            >
+              <div
+                style={{
+                  width: 54,
+                  height: 54,
+                  background: '#1a1030',
+                  border: '4px solid #fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: 'inset -5px -5px 0 rgba(0,0,0,0.5)',
+                  flexShrink: 0,
+                }}
+              >
+                {done ? <PixelIcon name="check" size={46 * check} glow="#3dff7a" /> : null}
+              </div>
+              <div
+                style={{
+                  fontFamily: FONT_HEAVY,
+                  fontWeight: 900,
+                  fontSize: 44,
+                  color: done ? COLORS.white : COLORS.muted,
+                  textShadow: '0 3px 0 rgba(0,0,0,0.6)',
+                }}
+              >
+                {item.text}
+              </div>
+            </div>
+          );
+        })}
+      </Glass>
+
+      {/* Echte Server-Screenshots zum gerade abgehakten Punkt */}
+      <div style={{position: 'relative', width: 800, height: 310}}>
+        {cards.map((c, k) => {
+          const to = k < cards.length - 1 ? cards[k + 1].from : duration + 30;
+          if (frame < c.from || frame > to + 6) return null;
+          const inP = spring({frame: frame - c.from, fps, config: {damping: 12, stiffness: 170, mass: 0.7}});
+          const outP = interpolate(frame, [to, to + 6], [1, 0], clamp);
+          const g = glitches.find((gf) => gf >= c.from && gf < to);
+          const glitch = g === undefined ? 0 : interpolate(frame - g, [0, 2, 14], [0, 1, 0], clamp);
+          const sticker =
+            g === undefined ? 0 : spring({frame: frame - g, fps, config: {damping: 9, stiffness: 190}});
+          const Card = CARD[c.screen];
+          return (
+            <div
+              key={k}
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: 0,
+                display: 'flex',
+                justifyContent: 'center',
+                opacity: Math.min(1, inP * 1.6) * outP,
+                transform: `translateY(${(1 - inP) * 50}px) scale(${(0.82 + 0.18 * inP) * (0.92 + 0.08 * outP)})`,
+                transformOrigin: 'top center',
+              }}
+            >
+              <div style={{position: 'relative'}}>
+                <Glitch amount={glitch}>
+                  <Card />
+                </Glitch>
+                <BugSticker progress={sticker} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/* ---------- 4: Prefix – echtes Menü "Prefix wählen" (Kontext) + echte Chatzeile (Hauptsache) ---------- */
+export const PrefixVisual: React.FC<VProps> = () => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const menuP = spring({frame: frame - sec(PREFIX.menuAt), fps, config: {damping: 12, stiffness: 150, mass: 0.8}});
+  const chatP = spring({frame: frame - sec(PREFIX.chatAt), fps, config: {damping: 14, stiffness: 140}});
+  const giftP = spring({frame: frame - sec(PREFIX.rewardAt), fps, config: {damping: 8, stiffness: 170}});
+  const menuScale = 0.62;
+  // Chat-Schrift im Screenshot: 1 MC-Pixel = 4 px -> bei 1,75x genau 7 px (gleichmäßige Pixel)
+  const chatScale = 1.75;
+  const line = SCREEN_REGIONS.chatRankLine;
+  const r = SCREEN_REGIONS.chatPrefix;
+  const shineT = (frame - sec(PREFIX.chatAt) - 8) % 40;
+  const shine = interpolate(shineT, [0, 22], [-40, 140], clamp);
+  const bump = 0.05 * Math.max(0, Math.sin(Math.min(Math.PI, ((frame - sec(PREFIX.chatAt) - 6) / 12) * Math.PI)));
+  return (
+    <div style={{position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 34, marginBottom: 22}}>
+      {/* Menü als Kontext: kleiner, tritt zurück, sobald die Chatzeile kommt */}
+      <div
+        style={{
+          transform: `translateY(${(1 - menuP) * 80}px) scale(${(0.55 + 0.45 * menuP) * (1 - 0.06 * chatP)}) rotate(${(1 - menuP) * -5}deg)`,
+          transformOrigin: 'bottom center',
+          opacity: Math.min(1, menuP * 1.6),
+          filter: `${neon(COLORS.purple, 1.2)} brightness(${1 - 0.32 * chatP}) saturate(${1 - 0.3 * chatP})`,
+        }}
+      >
+        <PrefixMenu scale={menuScale} />
+      </div>
+
+      {/* Geschenk für "weitere Belohnungen" */}
+      <div
+        style={{
+          position: 'absolute',
+          right: 40,
+          top: 10,
+          transform: `scale(${giftP}) translateY(${Math.sin(frame / 7) * 8}px) rotate(${Math.sin(frame / 11) * 7}deg)`,
+        }}
+      >
+        <PixelIcon name="gift" size={150} glow={COLORS.gold} />
+      </div>
+
+      {/* Echte Chatzeile, groß: "[Beta Tester] Inhaber" (leicht nach links, weg von der TikTok-Leiste) */}
+      <div
+        style={{
+          position: 'relative',
+          transform: `translateX(${(1 - chatP) * -900 - 20}px) scale(${1 + bump})`,
+          opacity: Math.min(1, chatP * 2),
+          boxShadow: `0 0 34px ${COLORS.cyan}aa, 0 0 0 5px ${COLORS.cyan}cc, 0 14px 30px rgba(0,0,0,0.55)`,
+        }}
+      >
+        <Screen img={SCREENS.chatBetaTester} region={line} scale={chatScale}>
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: (r.x - line.x) * chatScale,
+              width: r.w * chatScale,
+              overflow: 'hidden',
+              mixBlendMode: 'screen',
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: `${shine}%`,
+                width: '28%',
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)',
+                transform: 'skewX(-20deg)',
+              }}
+            />
+          </div>
+        </Screen>
+      </div>
+    </div>
+  );
+};
+
+/* ---------- 5: 20 Plätze – echte Scoreboard-Zeile "Online › 1/20" + 20 freie Slots ----------
+ * Die Slots bleiben "frei" (leere, leuchtende Rahmen mit "+") und werden beim Alarm nicht rot –
+ * sonst sähe es nach "schon voll / ausgebucht" aus. Rot werden nur Rahmen + Sticker. */
+export const SlotsVisual: React.FC<VProps> = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const panel = usePop(0, 13);
-  const taken = Math.floor(
-    interpolate(frame, [15, duration - 15], [0, SLOTS.total - SLOTS.countDownTo + 0.999], {
-      ...clamp,
-      easing: Easing.in(Easing.quad),
-    }),
+  const fillFrom = 8;
+  const fillTo = sec(SLOTS.filledAt);
+  const shown = Math.min(
+    SLOTS.total,
+    Math.floor(interpolate(frame, [fillFrom, fillTo], [0, SLOTS.total + 0.999], clamp)),
   );
-  const free = SLOTS.total - taken;
-  const low = free <= 6;
-  const tick = spring({frame: frame - Math.floor(frame / 6) * 6, fps, config: {damping: 10}});
-  const shake = low ? Math.sin(frame * 2.3) * 5 : 0;
-  // Reihenfolge der befüllten Slots (deterministisch gemischt)
-  const order = [7, 2, 13, 18, 0, 11, 5, 16, 9, 3, 14, 19, 6, 1, 12, 17, 8, 4, 15, 10];
-  const takenSet = new Set(order.slice(0, taken));
-  const accent = low ? '#ff3355' : COLORS.cyan;
+  const full = frame >= fillTo;
+  const alarmAt = sec(SLOTS.alarmAt);
+  const alarm = frame >= alarmAt;
+  const blink = alarm && Math.floor((frame - alarmAt) / 5) % 2 === 0;
+  const accent = alarm ? '#ff3355' : COLORS.cyan;
+  const shake = alarm ? Math.sin(frame * 2.3) * 6 * interpolate(frame - alarmAt, [0, 20], [1, 0.35], clamp) : 0;
+  const countPop = spring({frame: frame - fillTo, fps, config: {damping: 8, stiffness: 200}});
+  const ring = spring({frame: frame - fillTo + 2, fps, config: {damping: 12}});
+  const tick = shown > 0 ? spring({frame: frame - (fillFrom + ((shown - 1) / SLOTS.total) * (fillTo - fillFrom)), fps, config: {damping: 10}}) : 0;
+  const alarmPop = alarm ? spring({frame: frame - alarmAt, fps, config: {damping: 9, stiffness: 200}}) : 0;
+  const onlineScale = 2;
   return (
     <Glass
       accent={accent}
       style={{
+        position: 'relative',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: 14,
-        padding: '16px 24px 24px',
+        gap: 16,
+        padding: '22px 26px 26px',
         transform: `translateY(${(1 - panel) * -50}px) translateX(${shake}px)`,
         opacity: Math.min(1, panel * 1.4),
       }}
     >
-      <div style={{display: 'flex', alignItems: 'center', gap: 30}}>
+      {/* echte Scoreboard-Zeile */}
+      <div style={{position: 'relative', boxShadow: `0 0 0 4px rgba(255,255,255,0.12)`}}>
+        <Screen img={SCREENS.scoreboardOnline} scale={onlineScale} />
+        <Highlight
+          region={SCREEN_REGIONS.onlineMax}
+          scale={onlineScale}
+          color={COLORS.cyan}
+          progress={ring}
+          pulse={frame}
+          pad={0}
+        />
+      </div>
+
+      <div style={{display: 'flex', alignItems: 'center', gap: 28}}>
         <div
           style={{
             fontFamily: FONT_HEAVY,
             fontWeight: 900,
-            fontSize: 150,
+            fontSize: 128,
             lineHeight: 1,
-            color: low ? '#ff3355' : COLORS.white,
-            transform: `scale(${0.9 + 0.1 * tick})`,
+            color: COLORS.white,
+            transform: `scale(${full ? 1 + 0.18 * (1 - countPop) + (blink ? 0.06 : 0) : 0.92 + 0.08 * tick})`,
             textShadow: `0 0 34px ${accent}, 8px 8px 0 ${COLORS.purpleDeep}`,
             fontVariantNumeric: 'tabular-nums',
+            minWidth: 170,
+            textAlign: 'right',
           }}
         >
-          {free}
-          <span style={{fontSize: 70, color: COLORS.muted, textShadow: '0 4px 0 rgba(0,0,0,0.6)'}}>
-            /{SLOTS.total}
-          </span>
+          {shown}
         </div>
         <div
           style={{
             fontFamily: FONT_PIXEL,
             fontWeight: 700,
-            fontSize: 44,
-            lineHeight: 1.25,
+            fontSize: 48,
             letterSpacing: 4,
-            color: low ? '#ff5577' : COLORS.cyan,
+            color: COLORS.cyan,
             textShadow: '4px 4px 0 rgba(0,0,0,0.6)',
-            maxWidth: 360,
+            whiteSpace: 'nowrap',
           }}
         >
           {SLOTS.label}
         </div>
       </div>
-      {/* Inventar-Raster (2 x 10 wie zwei Hotbars) */}
+
+      {/* "Schnell sein!"-Sticker bei "wer zuerst kommt" */}
+      <div
+        style={{
+          position: 'absolute',
+          right: 24,
+          top: '100%',
+          marginTop: -26,
+          padding: '8px 18px',
+          background: 'rgba(30,4,16,0.92)',
+          border: '5px solid #ff3355',
+          boxShadow: '0 0 28px #ff3355',
+          fontFamily: FONT_HEAVY,
+          fontWeight: 900,
+          fontSize: 40,
+          color: '#ff4466',
+          textShadow: '0 0 14px #ff3355, 0 3px 0 rgba(0,0,0,0.6)',
+          whiteSpace: 'nowrap',
+          transform: `scale(${alarmPop}) rotate(${7 + Math.sin(frame / 4) * 2}deg)`,
+        }}
+      >
+        {SLOTS.alarmLabel}
+      </div>
+
+      {/* 20 Slots wie zwei Hotbars */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(10, 76px)',
+          gridTemplateColumns: 'repeat(10, 66px)',
           gap: 6,
           padding: 10,
           background: 'rgba(198,198,198,0.88)',
@@ -470,13 +715,19 @@ export const SlotsVisual: React.FC<VProps> = ({duration}) => {
         }}
       >
         {new Array(SLOTS.total).fill(0).map((_, i) => {
-          const isTaken = takenSet.has(i);
+          const on = i < shown;
+          const p = on
+            ? spring({frame: frame - (fillFrom + (i / SLOTS.total) * (fillTo - fillFrom)), fps, config: {damping: 10, stiffness: 220}})
+            : 0;
+          // "Wer zuerst kommt": eine Leuchtwelle läuft über die (weiterhin freien) Slots
+          const wave = alarm ? Math.max(0, Math.sin((frame - alarmAt) / 2.2 - (i % 10) * 0.55 - Math.floor(i / 10) * 0.8)) : 0;
+          const c = COLORS.cyan;
           return (
             <div
               key={i}
               style={{
-                width: 76,
-                height: 68,
+                width: 66,
+                height: 60,
                 background: '#8b8b8b',
                 boxShadow: 'inset 5px 5px 0 #373737, inset -5px -5px 0 #fff',
                 display: 'flex',
@@ -484,7 +735,23 @@ export const SlotsVisual: React.FC<VProps> = ({duration}) => {
                 justifyContent: 'center',
               }}
             >
-              {isTaken ? <PixelIcon name="head" size={48} /> : null}
+              {/* freier Platz: dunkler Rahmen mit leuchtendem Rand und "+" */}
+              <div
+                style={{
+                  position: 'relative',
+                  width: 42,
+                  height: 38,
+                  boxSizing: 'border-box',
+                  background: 'rgba(6,16,34,0.9)',
+                  border: `4px solid ${c}`,
+                  opacity: on ? 1 : 0,
+                  transform: `scale(${p * (1 + 0.1 * wave)})`,
+                  boxShadow: `0 0 ${10 + 14 * wave}px ${c}, inset 0 0 8px ${c}66`,
+                }}
+              >
+                <div style={{position: 'absolute', left: '50%', top: '50%', width: 18, height: 5, marginLeft: -9, marginTop: -2.5, background: c}} />
+                <div style={{position: 'absolute', left: '50%', top: '50%', width: 5, height: 18, marginLeft: -2.5, marginTop: -9, background: c}} />
+              </div>
             </div>
           );
         })}
@@ -493,45 +760,42 @@ export const SlotsVisual: React.FC<VProps> = ({duration}) => {
   );
 };
 
-/* ---------- 6: Discord ---------- */
-export const DiscordVisual: React.FC<VProps> = ({duration}) => {
+/* ---------- 6: Discord – echtes Banner "DISCORD /dc | TEAMSPEAK /ts" ---------- */
+export const DiscordVisual: React.FC<VProps> = () => {
   const frame = useCurrentFrame();
-  const p = usePop(0, 9);
+  const {fps} = useVideoConfig();
+  const p = usePop(0, 10);
   const btn = usePop(10, 12);
-  const clickAt = Math.round(duration * 0.5);
+  const hl = spring({frame: frame - sec(DISCORD.highlightAt), fps, config: {damping: 11}});
+  const clickAt = sec(DISCORD.clickAt);
   const pressed = frame >= clickAt && frame < clickAt + 6;
   const clicked = frame >= clickAt;
-  const cursorX = interpolate(frame, [16, clickAt], [330, 150], {...clamp, easing: Easing.inOut(Easing.cubic)});
-  const cursorY = interpolate(frame, [16, clickAt], [230, 70], {...clamp, easing: Easing.inOut(Easing.cubic)});
-  const rings = [0, 1, 2].map((i) => ((frame + i * 15) % 45) / 45);
+  // Cursor kommt auf Button-Höhe von rechts (nicht über die Caption) und klickt rechts
+  // neben die Beschriftung – Koordinaten relativ zur rechten Button-Kante.
+  const cursorX = interpolate(frame, [16, clickAt], [330, -32], {...clamp, easing: Easing.out(Easing.cubic)});
+  const cursorY = interpolate(frame, [16, clickAt], [18, 46], {...clamp, easing: Easing.inOut(Easing.quad)});
   const blurple = '#5865F2';
-  const size = 210;
+  const bannerScale = 1.65;
+  const glow = 1.2 + Math.sin(frame / 5) * 0.3;
   return (
-    <div style={{display: 'flex', alignItems: 'center', gap: 46}}>
-      <div style={{position: 'relative', width: size, height: size, transform: `scale(${p})`}}>
-        {rings.map((r, i) => (
-          <div
-            key={i}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              border: `6px solid ${COLORS.cyan}`,
-              transform: `scale(${0.8 + r * 0.7})`,
-              opacity: 1 - r,
-            }}
-          />
-        ))}
-        {/* Chat-Bubble-Icon */}
-        <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" style={{position: 'absolute', inset: 0, filter: `drop-shadow(0 0 24px ${blurple})`}}>
-          <rect x={1} y={2} width={14} height={10} fill={blurple} />
-          <rect x={2} y={1} width={12} height={1} fill={blurple} />
-          <rect x={2} y={12} width={12} height={1} fill={blurple} />
-          <rect x={3} y={13} width={3} height={2} fill={blurple} />
-          <rect x={1} y={11} width={14} height={1} fill="rgba(0,0,0,0.25)" />
-          <rect x={4} y={6} width={2} height={3} fill="#fff" />
-          <rect x={10} y={6} width={2} height={3} fill="#fff" />
-          <rect x={5} y={10} width={6} height={1} fill="#fff" />
-        </svg>
+    <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 44}}>
+      <div
+        style={{
+          position: 'relative',
+          transform: `scale(${0.5 + 0.5 * p}) translateY(${(1 - p) * 60}px)`,
+          opacity: Math.min(1, p * 1.5),
+          filter: neon(blurple, glow),
+        }}
+      >
+        <Screen img={SCREENS.discordBanner} scale={bannerScale} outline={SCREEN_OUTLINES.discordBanner} />
+        <Highlight
+          region={SCREEN_REGIONS.discordCommand}
+          scale={bannerScale}
+          color={COLORS.cyan}
+          progress={hl}
+          pulse={frame}
+          pad={10}
+        />
       </div>
       <div style={{position: 'relative'}}>
         <div
@@ -541,20 +805,24 @@ export const DiscordVisual: React.FC<VProps> = ({duration}) => {
             fontWeight: 900,
             fontSize: 56,
             color: '#fff',
-            padding: '26px 44px',
+            padding: '24px 44px',
             background: clicked ? '#3dbb6a' : blurple,
             border: '6px solid #fff',
             boxShadow: `inset -9px -9px 0 rgba(0,0,0,0.3), 0 0 40px ${clicked ? '#3dff7a' : blurple}, 0 12px 30px rgba(0,0,0,0.5)`,
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: 18,
             whiteSpace: 'nowrap',
+            // feste Breite inkl. Haken -> der Button springt beim Klick nicht
+            boxSizing: 'border-box',
+            minWidth: 560,
           }}
         >
           {clicked ? <PixelIcon name="check" size={56} /> : null}
           {DISCORD.button}
         </div>
-        <div style={{position: 'absolute', left: '50%', top: 0, transform: `translate(${cursorX}px, ${cursorY}px)`}}>
+        <div style={{position: 'absolute', left: '100%', top: 0, transform: `translate(${cursorX}px, ${cursorY}px)`}}>
           <PixelIcon name="cursor" size={80} />
         </div>
       </div>
